@@ -1,0 +1,34 @@
+# ─── P-DARTS Palm Vein NAS — Requirements ────────────────────────────────────
+# Install otomatis via: python setup_env.py
+#
+# Untuk install manual PyTorch + CUDA 12.6 (NVIDIA RTX 5090 / Blackwell):
+#   pip install torch>=2.6.0 torchvision>=0.21.0 --index-url https://download.pytorch.org/whl/cu126
+#
+# Untuk macOS Apple Silicon (MPS):
+#   pip install torch>=2.6.0 torchvision>=0.21.0
+#
+# Untuk CPU only:
+#   pip install torch>=2.5.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cpu
+# ─────────────────────────────────────────────────────────────────────────────
+
+# PyTorch (install via setup_env.py agar versi CUDA sesuai)
+# torch>=2.6.0
+# torchvision>=0.21.0
+
+# Data & komputasi
+numpy>=1.24
+Pillow>=10.0
+scipy>=1.11
+
+# Visualisasi
+matplotlib>=3.7
+seaborn>=0.13
+
+# Progress bar
+tqdm>=4.65
+
+# FLOPs counter (dipakai di utils.py → estimate_flops)
+thop>=0.1.1
+
+# ML utilities
+scikit-learn>=1.3
