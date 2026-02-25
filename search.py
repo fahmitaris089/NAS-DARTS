@@ -177,14 +177,29 @@ def prune_operations(model, primitives, num_ops_to_keep):
     op_scores = [(primitives[i], avg_weights[i].item()) for i in range(len(primitives))]
     op_scores_sorted = sorted(op_scores, key=lambda x: -x[1])
 
-    # Always keep 'none' and 'skip_connect' if they exist (structural ops)
+    # Structural ops that are always kept
+    STRUCTURAL_OPS = {'none', 'skip_connect'}
+    # Convolution ops — guarantee at least one survives pruning
+    CONV_OPS = {'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5'}
+
     kept = []
     remaining = []
     for name, score in op_scores_sorted:
-        if name in ('none', 'skip_connect') and len(kept) < num_ops_to_keep:
+        if name in STRUCTURAL_OPS and len(kept) < num_ops_to_keep:
             kept.append(name)
         else:
             remaining.append((name, score))
+
+    # Guarantee at least one conv op survives (anti-collapse safeguard)
+    has_conv = any(name in CONV_OPS for name in kept)
+    if not has_conv and len(kept) < num_ops_to_keep:
+        # Find the best-scoring conv op and add it
+        for name, score in remaining:
+            if name in CONV_OPS:
+                kept.append(name)
+                remaining = [(n, s) for n, s in remaining if n != name]
+                logging.info(f"  Anti-collapse: forced conv op '{name}' (score={score:.4f}) into kept set")
+                break
 
     # Fill remaining slots with highest-scoring ops
     for name, score in remaining:
