@@ -148,7 +148,7 @@ def validate(model, loader, criterion, device):
 
 # ─── Operation Pruning (P-DARTS) ─────────────────────────────────────────────
 
-def prune_operations(model, primitives, num_ops_to_keep):
+def prune_operations(model, primitives, num_ops_to_keep, logger=None):
     """
     Prune weak operations from search space.
 
@@ -198,7 +198,11 @@ def prune_operations(model, primitives, num_ops_to_keep):
             if name in CONV_OPS:
                 kept.append(name)
                 remaining = [(n, s) for n, s in remaining if n != name]
-                logging.info(f"  Anti-collapse: forced conv op '{name}' (score={score:.4f}) into kept set")
+                msg = f"  Anti-collapse: forced conv op '{name}' (score={score:.4f}) into kept set"
+                if logger:
+                    logger.info(msg)
+                else:
+                    print(msg)
                 break
 
     # Fill remaining slots with highest-scoring ops
@@ -307,7 +311,7 @@ def main():
 
         # Prune operations (except stage 1)
         if stage_idx > 0:
-            new_primitives = prune_operations(model, current_primitives, num_ops_target)
+            new_primitives = prune_operations(model, current_primitives, num_ops_target, logger=logger)
             logger.info(f"\nPruned ops: {current_primitives} → {new_primitives}")
             old_primitives = current_primitives
             old_model = model
@@ -416,6 +420,18 @@ def main():
                     f"lr={current_lr:.5f}  skip_drop={skip_dropout_prob:.2f}  "
                     f"{epoch_time:.1f}s"
                 )
+
+        # ── End of stage: save checkpoint before pruning ──
+        ckpt_path = save_dir / f"stage_{stage_idx + 1}_checkpoint.pt"
+        torch.save({
+            "stage": stage_idx + 1,
+            "model_state": model.state_dict(),
+            "alpha_normal": model.alpha_normal.data,
+            "alpha_reduce": model.alpha_reduce.data,
+            "primitives": current_primitives,
+            "w_optimizer": w_optimizer.state_dict(),
+        }, ckpt_path)
+        logger.info(f"  Checkpoint saved: {ckpt_path}")
 
         # ── End of stage: derive genotype ──
         genotype = model.genotype()
