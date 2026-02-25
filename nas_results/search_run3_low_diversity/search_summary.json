@@ -1,0 +1,125 @@
+{
+  "timestamp": "2026-02-25T18:27:25.026014",
+  "total_time_min": 237.21263712247213,
+  "seed": 42,
+  "stages": [
+    {
+      "cells": 5,
+      "num_ops": 8,
+      "epochs": 50
+    },
+    {
+      "cells": 8,
+      "num_ops": 5,
+      "epochs": 50
+    },
+    {
+      "cells": 11,
+      "num_ops": 3,
+      "epochs": 50
+    }
+  ],
+  "final_genotype": {
+    "normal": [
+      [
+        "dil_conv_3x3",
+        1
+      ],
+      [
+        "dil_conv_3x3",
+        0
+      ],
+      [
+        "dil_conv_3x3",
+        1
+      ],
+      [
+        "dil_conv_3x3",
+        2
+      ],
+      [
+        "dil_conv_3x3",
+        2
+      ],
+      [
+        "dil_conv_3x3",
+        1
+      ],
+      [
+        "dil_conv_3x3",
+        4
+      ],
+      [
+        "dil_conv_3x3",
+        1
+      ]
+    ],
+    "normal_concat": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "reduce": [
+      [
+        "dil_conv_3x3",
+        1
+      ],
+      [
+        "dil_conv_3x3",
+        0
+      ],
+      [
+        "skip_connect",
+        1
+      ],
+      [
+        "dil_conv_3x3",
+        2
+      ],
+      [
+        "dil_conv_3x3",
+        0
+      ],
+      [
+        "skip_connect",
+        1
+      ],
+      [
+        "dil_conv_3x3",
+        3
+      ],
+      [
+        "dil_conv_3x3",
+        1
+      ]
+    ],
+    "reduce_concat": [
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "recommended_C_init": 8,
+  "estimated_params": 301980,
+  "search_config": {
+    "C_search": "16",
+    "w_lr": "0.025",
+    "w_momentum": "0.9",
+    "w_weight_decay": "0.0003",
+    "w_lr_min": "0.001",
+    "a_lr": "0.0006",
+    "a_betas": "(0.5, 0.999)",
+    "a_weight_decay": "0.001",
+    "alpha_warmup_epochs": "15",
+    "batch_size": "16",
+    "num_workers": "4",
+    "grad_clip": "5.0",
+    "skip_dropout_start": "0.0",
+    "skip_dropout_end": "0.5",
+    "max_skip_connect": "2",
+    "label_smoothing": "0.1",
+    "search_train_ratio": "0.5"
+  }
+}

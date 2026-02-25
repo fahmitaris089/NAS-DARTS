@@ -177,10 +177,13 @@ def prune_operations(model, primitives, num_ops_to_keep, logger=None):
     op_scores = [(primitives[i], avg_weights[i].item()) for i in range(len(primitives))]
     op_scores_sorted = sorted(op_scores, key=lambda x: -x[1])
 
-    # Structural ops that are always kept
-    STRUCTURAL_OPS = {'none', 'skip_connect'}
-    # Convolution ops — guarantee at least one survives pruning
+    # Structural ops: only skip_connect is auto-kept.
+    # 'none' is NOT auto-kept because genotype() always excludes it,
+    # so it wastes a slot that could go to a real conv op.
+    STRUCTURAL_OPS = {'skip_connect'}
+    # Convolution ops — guarantee at least MIN_CONV survive pruning
     CONV_OPS = {'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5'}
+    MIN_CONV = 2  # ensure genotype diversity (≥2 different conv ops)
 
     kept = []
     remaining = []
@@ -190,20 +193,25 @@ def prune_operations(model, primitives, num_ops_to_keep, logger=None):
         else:
             remaining.append((name, score))
 
-    # Guarantee at least one conv op survives (anti-collapse safeguard)
-    has_conv = any(name in CONV_OPS for name in kept)
-    if not has_conv and len(kept) < num_ops_to_keep:
-        # Find the best-scoring conv op and add it
+    # Guarantee at least MIN_CONV conv ops survive (diversity safeguard)
+    conv_in_kept = sum(1 for name in kept if name in CONV_OPS)
+    while conv_in_kept < MIN_CONV and len(kept) < num_ops_to_keep:
+        # Find the best-scoring conv op not yet in kept
+        added = False
         for name, score in remaining:
             if name in CONV_OPS:
                 kept.append(name)
                 remaining = [(n, s) for n, s in remaining if n != name]
-                msg = f"  Anti-collapse: forced conv op '{name}' (score={score:.4f}) into kept set"
+                conv_in_kept += 1
+                msg = f"  Diversity guard: forced conv op '{name}' (score={score:.4f}) into kept set [{conv_in_kept}/{MIN_CONV}]"
                 if logger:
                     logger.info(msg)
                 else:
                     print(msg)
+                added = True
                 break
+        if not added:
+            break  # no more conv ops available
 
     # Fill remaining slots with highest-scoring ops
     for name, score in remaining:

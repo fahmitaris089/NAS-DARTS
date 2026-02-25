@@ -38,7 +38,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from nas_config import RETRAIN_CFG, RETRAIN_DIR, NUM_CLASSES, SEED
-from genotypes import dict_to_genotype
+from genotypes import dict_to_genotype, genotype_to_dict
 from model_eval import EvalNetwork, count_parameters, find_optimal_C_init, param_breakdown
 from palm_vein_dataset import create_retrain_dataloaders
 from utils import set_seed, get_device, setup_logger, AverageMeter
@@ -389,13 +389,11 @@ def main():
         "C_init": C_init,
         "total_params": total_params,
         "auxiliary": use_auxiliary,
-        "genotype": genotype_to_dict(genotype) if hasattr(genotype, '_asdict') else genotype_dict,
+        "genotype": genotype_to_dict(genotype),
         "device": str(device),
         "timestamp": datetime.now().isoformat(),
         "retrain_cfg": {k: str(v) for k, v in RETRAIN_CFG.items()},
     }
-    from genotypes import genotype_to_dict
-    config["genotype"] = genotype_to_dict(genotype)
 
     with open(save_dir / "config.json", "w") as f:
         json.dump(config, f, indent=2, default=str)
