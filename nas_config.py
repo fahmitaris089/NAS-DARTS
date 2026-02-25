@@ -61,7 +61,7 @@ PDARTS_STAGES = [
 
 SEARCH_CFG = {
     # Supernet channels (larger for 834-class problem)
-    "C_search":       8,
+    "C_search":       16,
 
     # Weight optimizer (SGD)
     "w_lr":           0.025,
@@ -78,13 +78,13 @@ SEARCH_CFG = {
     "alpha_warmup_epochs": 15,
 
     # Training
-    "batch_size":     32,
+    "batch_size":     16,
     "num_workers":    4,
     "grad_clip":      5.0,
 
     # P-DARTS skip-connect dropout (linearly increases)
     "skip_dropout_start": 0.0,
-    "skip_dropout_end":   0.3,
+    "skip_dropout_end":   0.5,
     "max_skip_connect":   2,    # max skip-connects per cell
 
     # Label smoothing (consistent with teacher)
