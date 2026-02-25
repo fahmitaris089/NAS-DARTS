@@ -61,7 +61,7 @@ PDARTS_STAGES = [
 
 SEARCH_CFG = {
     # Supernet channels (larger for 834-class problem)
-    "C_search":       16,
+    "C_search":       8,
 
     # Weight optimizer (SGD)
     "w_lr":           0.025,
@@ -78,7 +78,7 @@ SEARCH_CFG = {
     "alpha_warmup_epochs": 15,
 
     # Training
-    "batch_size":     64,
+    "batch_size":     32,
     "num_workers":    4,
     "grad_clip":      5.0,
 
