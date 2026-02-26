@@ -163,12 +163,13 @@ def get_torch_install_cmd(plat: dict) -> list[str]:
     elif os_name == "Linux" or os_name == "Windows":
         if nvidia_avail:
             if has_5090:
-                # RTX 5090 butuh PyTorch 2.6+ dengan CUDA 12.6
-                info("RTX 5090 terdeteksi → install PyTorch 2.6+ CUDA 12.6")
+                # RTX 5090 (Blackwell sm_100) butuh PyTorch nightly + CUDA 12.8
+                # cu126 stable TIDAK bekerja di vast.ai tmux dengan RTX 5090
+                info("RTX 5090 terdeteksi → install PyTorch nightly CUDA 12.8")
                 return [
-                    sys.executable, "-m", "pip", "install", "--upgrade",
-                    "torch>=2.6.0", "torchvision>=0.21.0",
-                    "--index-url", "https://download.pytorch.org/whl/cu126",
+                    sys.executable, "-m", "pip", "install", "--pre",
+                    "torch", "torchvision", "torchaudio",
+                    "--index-url", "https://download.pytorch.org/whl/nightly/cu128",
                 ]
             else:
                 # GPU NVIDIA lain: pakai CUDA 12.4 (lebih stabil)
