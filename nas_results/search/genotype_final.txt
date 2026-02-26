@@ -3,18 +3,18 @@
   Normal Cell
 ==================================================
   Inputs: node_0 (c_{k-2}), node_1 (c_{k-1})
-  node_2 = dil_conv_3x3(node_1) + dil_conv_3x3(node_0)
-  node_3 = dil_conv_3x3(node_1) + dil_conv_3x3(node_2)
-  node_4 = dil_conv_3x3(node_2) + dil_conv_3x3(node_1)
-  node_5 = dil_conv_3x3(node_4) + dil_conv_3x3(node_1)
+  node_2 = dil_conv_3x3(node_0) + dil_conv_5x5(node_1)
+  node_3 = dil_conv_5x5(node_2) + dil_conv_3x3(node_1)
+  node_4 = dil_conv_5x5(node_1) + dil_conv_5x5(node_0)
+  node_5 = dil_conv_5x5(node_0) + dil_conv_3x3(node_1)
   Output = concat(node_2, node_3, node_4, node_5)
 
 ==================================================
   Reduce Cell
 ==================================================
   Inputs: node_0 (c_{k-2}), node_1 (c_{k-1})
-  node_2 = dil_conv_3x3(node_1) + dil_conv_3x3(node_0)
-  node_3 = skip_connect(node_1) + dil_conv_3x3(node_2)
-  node_4 = dil_conv_3x3(node_0) + skip_connect(node_1)
-  node_5 = dil_conv_3x3(node_3) + dil_conv_3x3(node_1)
+  node_2 = dil_conv_5x5(node_1) + dil_conv_5x5(node_0)
+  node_3 = dil_conv_3x3(node_0) + dil_conv_5x5(node_2)
+  node_4 = dil_conv_3x3(node_0) + dil_conv_5x5(node_2)
+  node_5 = dil_conv_5x5(node_1) + dil_conv_5x5(node_2)
   Output = concat(node_2, node_3, node_4, node_5)

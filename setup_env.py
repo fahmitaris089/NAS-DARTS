@@ -221,6 +221,10 @@ def install_dependencies():
         # Profiling (opsional, untuk measure_latency & count_flops)
         "thop>=0.1.1",            # FLOPs counter (digunakan di utils.py)
 
+        # Download & compression
+        "gdown>=5.0",             # Download from Google Drive
+        "zipfile-deflate64>=0.2",  # ZIP support (zipfile bawaan juga built-in)
+
         # Optional tapi berguna
         "scipy>=1.11",
         "scikit-learn>=1.3",
