@@ -615,10 +615,14 @@ def main():
     # ── Final test evaluation ──
     logger.info("\n" + "=" * 70)
     logger.info(f"  Training selesai. Best epoch={best_epoch}  best_val_acc={best_val_acc:.4f}")
-    logger.info("  Memuat best_model.pth untuk evaluasi test...")
 
-    best_state = torch.load(output_dir / "best_model.pth", map_location=device)
-    student.load_state_dict(best_state)
+    best_model_path = output_dir / "best_model.pth"
+    if best_model_path.exists():
+        logger.info("  Memuat best_model.pth untuk evaluasi test...")
+        best_state = torch.load(best_model_path, map_location=device)
+        student.load_state_dict(best_state)
+    else:
+        logger.info("  best_model.pth tidak ada (epochs=0) — evaluasi menggunakan weights yang sudah di-load.")
 
     logger.info("  Evaluasi TEST set...")
     test_results = evaluate(student, test_loader, device, compute_auc=True)
