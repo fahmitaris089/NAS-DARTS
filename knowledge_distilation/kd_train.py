@@ -33,7 +33,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.models as tv_models
-from sklearn.metrics import roc_auc_score
+from scipy.interpolate import interp1d
+from scipy.optimize import brentq
+from sklearn.metrics import roc_auc_score, roc_curve
 from torch.cuda.amp import GradScaler, autocast
 
 # ─── Pastikan root project ada di path untuk import model_eval, dll. ─────────
@@ -435,34 +437,42 @@ def plot_curves(history: list[dict], output_dir: Path) -> None:
 @torch.no_grad()
 def compute_eer(student, loader, device) -> float:
     """
-    Hitung Equal Error Rate untuk single-class verification scenario.
-    Menggunakan max probability sebagai similarity score.
+    Hitung Equal Error Rate per-class biometric verification scenario.
+    Sama dengan retrain.py: untuk setiap identitas, hitung EER genuine vs impostor
+    menggunakan probabilitas kelas sebagai skor, lalu rata-ratakan.
     """
-    from sklearn.metrics import roc_curve
     student.eval()
 
-    scores      = []
-    is_genuine  = []
+    all_probs  = []
+    all_labels = []
 
     for images, targets in loader:
         images  = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
-        logits       = student(images)
-        probs        = torch.softmax(logits, dim=1)
-        max_probs, _ = probs.max(dim=1)
+        logits = student(images)
+        probs  = torch.softmax(logits, dim=1)
 
-        pred         = logits.argmax(dim=1)
-        correct_mask = (pred == targets)
+        all_probs.append(probs.cpu().numpy())
+        all_labels.append(targets.cpu().numpy())
 
-        scores.extend(max_probs.cpu().numpy().tolist())
-        is_genuine.extend(correct_mask.cpu().numpy().tolist())
+    all_probs  = np.concatenate(all_probs,  axis=0)   # (N, num_classes)
+    all_labels = np.concatenate(all_labels, axis=0)   # (N,)
 
-    fpr, tpr, _ = roc_curve(is_genuine, scores)
-    fnr         = 1.0 - tpr
-    eer_idx     = np.argmin(np.abs(fnr - fpr))
-    eer         = float((fpr[eer_idx] + fnr[eer_idx]) / 2.0)
-    return eer
+    eers = []
+    for cls in np.unique(all_labels):
+        y_bin  = (all_labels == cls).astype(int)      # genuine=1, impostor=0
+        scores = all_probs[:, cls]                    # probabilitas kelas cls
+        fpr, tpr, _ = roc_curve(y_bin, scores)
+        fnr = 1.0 - tpr
+        if len(fpr) > 1:
+            try:
+                eer = brentq(lambda x: interp1d(fpr, fnr)(x) - x, 0.0, 1.0)
+                eers.append(eer)
+            except Exception:
+                pass
+
+    return float(np.mean(eers)) if eers else float("nan")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
