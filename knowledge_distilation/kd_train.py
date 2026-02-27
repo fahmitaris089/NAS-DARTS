@@ -107,6 +107,8 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     parser.add_argument("--seed",        type=int,   default=cfg.seed)
     parser.add_argument("--no_amp",      action="store_true",
                         help="Disable Automatic Mixed Precision")
+    parser.add_argument("--no_pretrained_student", action="store_true",
+                        help="Train student from scratch (random init, ignore --student_weights)")
 
     args = parser.parse_args()
 
@@ -126,6 +128,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.seed                = args.seed
     if args.no_amp:
         cfg.amp = False
+    cfg.no_pretrained_student = args.no_pretrained_student
 
     # Auto-generate output folder dari parameter jika tidak di-set eksplisit
     # Format: kd_results/t{temp}_a{alpha}_e{epochs}
@@ -188,30 +191,38 @@ def load_student(cfg: KDConfig, device: torch.device, logger: logging.Logger) ->
 
     genotype = dict_to_genotype(retrain_cfg["genotype"])
 
+    # Baca C_init dan num_cells langsung dari config.json (lebih akurat dari default cfg)
+    c_init    = int(retrain_cfg.get("C_init",    cfg.student_C_init))
+    num_cells = int(retrain_cfg.get("num_cells", cfg.student_num_cells))
+    logger.info(f"  Student arch: C_init={c_init}, num_cells={num_cells}")
+
     student = EvalNetwork(
         genotype    = genotype,
-        C_init      = cfg.student_C_init,
-        num_cells   = cfg.student_num_cells,
+        C_init      = c_init,
+        num_cells   = num_cells,
         num_classes = cfg.num_classes,
         auxiliary   = False,   # KD: hanya pakai main head
         dropout     = cfg.student_dropout,
     )
 
-    logger.info(f"  Loading student weights: {cfg.student_weights}")
-    state_dict = torch.load(cfg.student_weights, map_location="cpu")
+    if cfg.no_pretrained_student:
+        logger.info("  Student: random initialization (from scratch, --no_pretrained_student)")
+    else:
+        logger.info(f"  Loading student weights: {cfg.student_weights}")
+        state_dict = torch.load(cfg.student_weights, map_location="cpu")
 
-    # strict=False karena checkpoint mungkin punya kunci _auxiliary_head.*
-    # yang tidak ada di student dengan auxiliary=False
-    missing, unexpected = student.load_state_dict(state_dict, strict=False)
-    if missing:
-        logger.warning(f"  Missing keys ({len(missing)}): {missing[:5]}{'...' if len(missing) > 5 else ''}")
-    if unexpected:
-        aux_keys = [k for k in unexpected if "_auxiliary_head" in k]
-        other_unexpect = [k for k in unexpected if "_auxiliary_head" not in k]
-        if aux_keys:
-            logger.info(f"  Auxiliary head keys skipped (expected, auxiliary=False): {len(aux_keys)} keys")
-        if other_unexpect:
-            logger.warning(f"  Other unexpected keys: {other_unexpect}")
+        # strict=False karena checkpoint mungkin punya kunci _auxiliary_head.*
+        # yang tidak ada di student dengan auxiliary=False
+        missing, unexpected = student.load_state_dict(state_dict, strict=False)
+        if missing:
+            logger.warning(f"  Missing keys ({len(missing)}): {missing[:5]}{'...' if len(missing) > 5 else ''}")
+        if unexpected:
+            aux_keys = [k for k in unexpected if "_auxiliary_head" in k]
+            other_unexpect = [k for k in unexpected if "_auxiliary_head" not in k]
+            if aux_keys:
+                logger.info(f"  Auxiliary head keys skipped (expected, auxiliary=False): {len(aux_keys)} keys")
+            if other_unexpect:
+                logger.warning(f"  Other unexpected keys: {other_unexpect}")
 
     student.to(device)
 

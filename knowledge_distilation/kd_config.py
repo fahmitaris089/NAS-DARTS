@@ -27,7 +27,7 @@ class KDConfig:
     # ── Teacher ──────────────────────────────────────────────────────────────
     teacher_arch: str = "efficientnet_v2_m"
     # Path ke best_model.pth teacher (state_dict langsung)
-    teacher_weights: str = str(_HERE / "best_model_teacher" / "best_model.pth")
+    teacher_weights: str = str(_HERE / "best_model.pth")
 
     # ── Student ──────────────────────────────────────────────────────────────
     # Genotype diambil dari retrain/config.json (bukan dari file json terpisah)
@@ -77,8 +77,7 @@ class KDConfig:
     # ── Misc ─────────────────────────────────────────────────────────────────
     seed: int          = 42
     device: str        = "auto"     # "auto" → pakai cuda jika tersedia
-    amp: bool          = True       # Automatic Mixed Precision (lebih cepat di GPU)
-
+    amp: bool          = True       # Automatic Mixed Precision (lebih cepat di GPU)    no_pretrained_student: bool = False  # True → student inisialisasi random (from scratch)
 
 # Instance default — langsung di-import
 KD_CFG = KDConfig()
