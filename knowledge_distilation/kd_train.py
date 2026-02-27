@@ -519,7 +519,11 @@ def main():
 
     # ── Models ──
     logger.info("\n  Memuat model...")
-    teacher = load_teacher(cfg, device, logger)
+    if cfg.epochs > 0:
+        teacher = load_teacher(cfg, device, logger)
+    else:
+        teacher = None
+        logger.info("  Teacher: skipped (epochs=0, evaluation only)")
     student = load_student(cfg, device, logger)
 
     # ── Loss ──

@@ -1,0 +1,31 @@
+2026-02-27 04:50:01 | INFO  | Device: cuda
+2026-02-27 04:50:01 | INFO  | GPU: NVIDIA GeForce RTX 5090
+2026-02-27 04:50:01 | INFO  |   Loading datasets...
+2026-02-27 04:50:01 | INFO  |   Train batches: 104  |  Val batches: 14  |  Test batches: 14
+2026-02-27 04:50:01 | INFO  | 
+  Memuat model...
+2026-02-27 04:50:01 | INFO  |   Loading teacher: efficientnet_v2_m  weights=/workspace/NAS-DARTS/knowledge_distilation/best_model.pth
+2026-02-27 04:50:02 | INFO  |   Teacher loaded: 53.9M params  |  FROZEN
+2026-02-27 04:50:02 | INFO  |   Loading student config: nas_results/retrain_run5/config.json
+2026-02-27 04:50:02 | INFO  |   Student arch: C_init=4, num_cells=8
+2026-02-27 04:50:02 | INFO  |   Loading student weights: knowledge_distilation/kd_results/run5_finetune_t6_a0.3_e150/best_model.pth
+2026-02-27 04:50:02 | INFO  |   Student loaded: 82.6K trainable params
+2026-02-27 04:50:02 | INFO  |   Loss: HintonKD  T=4.0  α=0.3 (CE=30%, KD=70%)
+2026-02-27 04:50:02 | INFO  | 
+======================================================================
+2026-02-27 04:50:02 | INFO  |   Mulai KD Training  |  0 epochs  |  device=cuda
+2026-02-27 04:50:02 | INFO  | ======================================================================
+2026-02-27 04:50:02 | INFO  | 
+======================================================================
+2026-02-27 04:50:02 | INFO  |   Training selesai. Best epoch=0  best_val_acc=0.0000
+2026-02-27 04:50:02 | INFO  |   best_model.pth tidak ada (epochs=0) — evaluasi menggunakan weights yang sudah di-load.
+2026-02-27 04:50:02 | INFO  |   Evaluasi TEST set...
+2026-02-27 04:50:06 | INFO  | ======================================================================
+2026-02-27 04:50:06 | INFO  |   TEST ACCURACY  : 97.36%
+2026-02-27 04:50:06 | INFO  |   TEST LOSS      : 1.4258
+2026-02-27 04:50:06 | INFO  |   TEST AUC       : 0.9997149939112335
+2026-02-27 04:50:06 | INFO  |   TEST EER       : 0.0285%
+2026-02-27 04:50:06 | INFO  | ======================================================================
+2026-02-27 04:50:06 | INFO  | 
+  Output disimpan di: knowledge_distilation/kd_results/run5_finetune_t6_a0.3_e150_reeval
+2026-02-27 04:50:06 | INFO  |   Done.

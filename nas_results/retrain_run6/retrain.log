@@ -1,0 +1,129 @@
+2026-02-27 04:56:54 | INFO  | NAS Retrain Started at 2026-02-27T04:56:54.667431
+2026-02-27 04:56:54 | INFO  | Genotype loaded from nas_results/search/genotype_final.json
+2026-02-27 04:56:54 | INFO  |   Normal: [('dil_conv_3x3', 0), ('dil_conv_5x5', 1), ('dil_conv_5x5', 2), ('dil_conv_3x3', 1), ('dil_conv_5x5', 1), ('dil_conv_5x5', 0), ('dil_conv_5x5', 0), ('dil_conv_3x3', 1)]
+2026-02-27 04:56:54 | INFO  |   Reduce: [('dil_conv_5x5', 1), ('dil_conv_5x5', 0), ('dil_conv_3x3', 0), ('dil_conv_5x5', 2), ('dil_conv_3x3', 0), ('dil_conv_5x5', 2), ('dil_conv_5x5', 1), ('dil_conv_5x5', 2)]
+2026-02-27 04:56:54 | INFO  | 
+Model Architecture:
+2026-02-27 04:56:54 | INFO  |   C_init     : 5
+2026-02-27 04:56:54 | INFO  |   Cells      : 8
+2026-02-27 04:56:54 | INFO  |   Auxiliary   : True
+2026-02-27 04:56:54 | INFO  |   Parameters : 225,476
+2026-02-27 04:56:54 | INFO  | 
+Module                                         Params      %
+------------------------------------------------------------
+  stem                                            435   0.2%
+  cells                                        39,405  17.5%
+  _auxiliary_head                             118,082  52.4%
+  global_pooling                                    0   0.0%
+  dropout                                           0   0.0%
+  classifier                                   67,554  30.0%
+------------------------------------------------------------
+  TOTAL                                       225,476 100.0%
+2026-02-27 04:56:54 | WARNING |   ⚠ Below target min (250,000)
+2026-02-27 04:56:55 | INFO  | 
+============================================================
+2026-02-27 04:56:55 | INFO  |   Training: 300 epochs
+2026-02-27 04:56:55 | INFO  |   LR: 0.001, Weight Decay: 0.05
+2026-02-27 04:56:55 | INFO  |   Warmup: 10 epochs
+2026-02-27 04:56:55 | INFO  |   DropPath: 0 → 0.2
+2026-02-27 04:56:55 | INFO  |   CutOut: 16px
+2026-02-27 04:56:55 | INFO  |   Batch: 64
+2026-02-27 04:56:55 | INFO  | ============================================================
+2026-02-27 04:57:23 | INFO  |   E   1/300 │ train_loss=9.4339  acc=0.0012 │ val_loss=6.7340  acc=0.0012 │ lr=0.000109  dp=0.001  28.1s *** BEST
+2026-02-27 04:57:50 | INFO  |   E   2/300 │ train_loss=9.4311  acc=0.0015 │ val_loss=6.7287  acc=0.0012 │ lr=0.000208  dp=0.001  27.1s *** BEST
+2026-02-27 04:58:17 | INFO  |   E   3/300 │ train_loss=9.4237  acc=0.0011 │ val_loss=6.7208  acc=0.0036 │ lr=0.000307  dp=0.002  26.9s *** BEST
+2026-02-27 04:58:44 | INFO  |   E   4/300 │ train_loss=9.4024  acc=0.0024 │ val_loss=6.6799  acc=0.0048 │ lr=0.000406  dp=0.003  26.8s *** BEST
+2026-02-27 04:59:11 | INFO  |   E   5/300 │ train_loss=9.3347  acc=0.0029 │ val_loss=6.5586  acc=0.0072 │ lr=0.000505  dp=0.003  26.9s *** BEST
+2026-02-27 05:01:25 | INFO  |   E  10/300 │ train_loss=8.5961  acc=0.0185 │ val_loss=6.4921  acc=0.0072 │ lr=0.001000  dp=0.007  27.0s
+2026-02-27 05:05:55 | INFO  |   E  20/300 │ train_loss=7.5391  acc=0.1315 │ val_loss=5.2801  acc=0.1631 │ lr=0.000997  dp=0.013  26.9s *** BEST
+2026-02-27 05:10:25 | INFO  |   E  30/300 │ train_loss=6.6897  acc=0.3122 │ val_loss=5.2667  acc=0.1139 │ lr=0.000988  dp=0.020  27.0s
+2026-02-27 05:14:54 | INFO  |   E  40/300 │ train_loss=5.9275  acc=0.5312 │ val_loss=4.3672  acc=0.3921 │ lr=0.000974  dp=0.027  27.0s *** BEST
+2026-02-27 05:19:23 | INFO  |   E  50/300 │ train_loss=5.3355  acc=0.6816 │ val_loss=4.1616  acc=0.4592 │ lr=0.000954  dp=0.033  27.0s
+2026-02-27 05:23:53 | INFO  |   E  60/300 │ train_loss=4.9406  acc=0.7571 │ val_loss=3.9398  acc=0.5492 │ lr=0.000929  dp=0.040  27.0s
+2026-02-27 05:28:23 | INFO  |   E  70/300 │ train_loss=4.6719  acc=0.8107 │ val_loss=3.3129  acc=0.7614 │ lr=0.000898  dp=0.047  26.9s
+2026-02-27 05:32:57 | INFO  | NAS Retrain Started at 2026-02-27T05:32:57.190403
+2026-02-27 05:32:57 | INFO  | Genotype loaded from nas_results/search/genotype_final.json
+2026-02-27 05:32:57 | INFO  |   Normal: [('dil_conv_3x3', 0), ('dil_conv_5x5', 1), ('dil_conv_5x5', 2), ('dil_conv_3x3', 1), ('dil_conv_5x5', 1), ('dil_conv_5x5', 0), ('dil_conv_5x5', 0), ('dil_conv_3x3', 1)]
+2026-02-27 05:32:57 | INFO  |   Reduce: [('dil_conv_5x5', 1), ('dil_conv_5x5', 0), ('dil_conv_3x3', 0), ('dil_conv_5x5', 2), ('dil_conv_3x3', 0), ('dil_conv_5x5', 2), ('dil_conv_5x5', 1), ('dil_conv_5x5', 2)]
+2026-02-27 05:32:57 | INFO  | 
+Model Architecture:
+2026-02-27 05:32:57 | INFO  |   C_init     : 5
+2026-02-27 05:32:57 | INFO  |   Cells      : 8
+2026-02-27 05:32:57 | INFO  |   Auxiliary   : True
+2026-02-27 05:32:57 | INFO  |   Parameters : 225,476
+2026-02-27 05:32:57 | INFO  | 
+Module                                         Params      %
+------------------------------------------------------------
+  stem                                            435   0.2%
+  cells                                        39,405  17.5%
+  _auxiliary_head                             118,082  52.4%
+  global_pooling                                    0   0.0%
+  dropout                                           0   0.0%
+  classifier                                   67,554  30.0%
+------------------------------------------------------------
+  TOTAL                                       225,476 100.0%
+2026-02-27 05:32:57 | WARNING |   ⚠ Below target min (250,000)
+2026-02-27 05:32:57 | INFO  | 
+============================================================
+2026-02-27 05:32:57 | INFO  |   Training: 300 epochs
+2026-02-27 05:32:57 | INFO  |   LR: 0.001, Weight Decay: 0.05
+2026-02-27 05:32:57 | INFO  |   Warmup: 10 epochs
+2026-02-27 05:32:57 | INFO  |   DropPath: 0 → 0.2
+2026-02-27 05:32:57 | INFO  |   CutOut: 16px
+2026-02-27 05:32:57 | INFO  |   Batch: 64
+2026-02-27 05:32:57 | INFO  | ============================================================
+2026-02-27 05:33:25 | INFO  |   E   1/300 │ train_loss=9.4339  acc=0.0012 │ val_loss=6.7340  acc=0.0012 │ lr=0.000109  dp=0.001  28.2s *** BEST
+2026-02-27 05:33:52 | INFO  |   E   2/300 │ train_loss=9.4311  acc=0.0015 │ val_loss=6.7287  acc=0.0012 │ lr=0.000208  dp=0.001  27.1s *** BEST
+2026-02-27 05:34:19 | INFO  |   E   3/300 │ train_loss=9.4237  acc=0.0011 │ val_loss=6.7208  acc=0.0036 │ lr=0.000307  dp=0.002  26.9s *** BEST
+2026-02-27 05:34:46 | INFO  |   E   4/300 │ train_loss=9.4024  acc=0.0024 │ val_loss=6.6799  acc=0.0048 │ lr=0.000406  dp=0.003  26.9s *** BEST
+2026-02-27 05:35:13 | INFO  |   E   5/300 │ train_loss=9.3347  acc=0.0029 │ val_loss=6.5586  acc=0.0072 │ lr=0.000505  dp=0.003  26.9s *** BEST
+2026-02-27 05:37:28 | INFO  |   E  10/300 │ train_loss=8.5961  acc=0.0185 │ val_loss=6.4921  acc=0.0072 │ lr=0.001000  dp=0.007  27.0s
+2026-02-27 05:41:58 | INFO  |   E  20/300 │ train_loss=7.5391  acc=0.1315 │ val_loss=5.2801  acc=0.1631 │ lr=0.000997  dp=0.013  27.0s *** BEST
+2026-02-27 05:46:27 | INFO  |   E  30/300 │ train_loss=6.6897  acc=0.3122 │ val_loss=5.2667  acc=0.1139 │ lr=0.000988  dp=0.020  27.0s
+2026-02-27 05:50:57 | INFO  |   E  40/300 │ train_loss=5.9275  acc=0.5312 │ val_loss=4.3672  acc=0.3921 │ lr=0.000974  dp=0.027  26.9s *** BEST
+2026-02-27 05:55:26 | INFO  |   E  50/300 │ train_loss=5.3355  acc=0.6816 │ val_loss=4.1616  acc=0.4592 │ lr=0.000954  dp=0.033  27.0s
+2026-02-27 05:59:56 | INFO  |   E  60/300 │ train_loss=4.9406  acc=0.7571 │ val_loss=3.9398  acc=0.5492 │ lr=0.000929  dp=0.040  26.9s
+2026-02-27 06:04:25 | INFO  |   E  70/300 │ train_loss=4.6719  acc=0.8107 │ val_loss=3.3129  acc=0.7614 │ lr=0.000898  dp=0.047  26.9s
+2026-02-27 06:08:55 | INFO  |   E  80/300 │ train_loss=4.4944  acc=0.8427 │ val_loss=4.1379  acc=0.4341 │ lr=0.000863  dp=0.053  27.0s
+2026-02-27 06:13:24 | INFO  |   E  90/300 │ train_loss=4.3891  acc=0.8603 │ val_loss=4.8338  acc=0.3573 │ lr=0.000824  dp=0.060  26.9s
+2026-02-27 06:17:54 | INFO  |   E 100/300 │ train_loss=4.3244  acc=0.8687 │ val_loss=3.0667  acc=0.8285 │ lr=0.000781  dp=0.067  26.9s
+2026-02-27 06:22:23 | INFO  |   E 110/300 │ train_loss=4.2554  acc=0.8849 │ val_loss=3.3906  acc=0.7086 │ lr=0.000734  dp=0.073  26.9s
+2026-02-27 06:26:53 | INFO  |   E 120/300 │ train_loss=4.2159  acc=0.8888 │ val_loss=2.7122  acc=0.9400 │ lr=0.000685  dp=0.080  27.0s *** BEST
+2026-02-27 06:31:23 | INFO  |   E 130/300 │ train_loss=4.1926  acc=0.8932 │ val_loss=2.8950  acc=0.8753 │ lr=0.000634  dp=0.087  27.0s
+2026-02-27 06:35:52 | INFO  |   E 140/300 │ train_loss=4.1512  acc=0.8995 │ val_loss=2.6779  acc=0.9436 │ lr=0.000581  dp=0.093  27.0s
+2026-02-27 06:40:22 | INFO  |   E 150/300 │ train_loss=4.1489  acc=0.8981 │ val_loss=2.6439  acc=0.9508 │ lr=0.000528  dp=0.100  27.0s *** BEST
+2026-02-27 06:44:51 | INFO  |   E 160/300 │ train_loss=4.1306  acc=0.9034 │ val_loss=3.5552  acc=0.6379 │ lr=0.000473  dp=0.107  26.9s
+2026-02-27 06:49:21 | INFO  |   E 170/300 │ train_loss=4.1289  acc=0.8992 │ val_loss=2.7231  acc=0.9293 │ lr=0.000420  dp=0.113  27.0s
+2026-02-27 06:53:51 | INFO  |   E 180/300 │ train_loss=4.1118  acc=0.9076 │ val_loss=2.6492  acc=0.9448 │ lr=0.000367  dp=0.120  27.0s
+2026-02-27 06:58:21 | INFO  |   E 190/300 │ train_loss=4.1103  acc=0.9106 │ val_loss=2.6252  acc=0.9628 │ lr=0.000316  dp=0.127  27.0s
+2026-02-27 07:02:51 | INFO  |   E 200/300 │ train_loss=4.1186  acc=0.9082 │ val_loss=2.5657  acc=0.9604 │ lr=0.000267  dp=0.133  26.9s
+2026-02-27 07:07:21 | INFO  |   E 210/300 │ train_loss=4.1251  acc=0.9019 │ val_loss=2.6057  acc=0.9508 │ lr=0.000220  dp=0.140  27.0s
+2026-02-27 07:11:50 | INFO  |   E 220/300 │ train_loss=4.1303  acc=0.9073 │ val_loss=2.5706  acc=0.9628 │ lr=0.000177  dp=0.147  27.0s
+2026-02-27 07:16:20 | INFO  |   E 230/300 │ train_loss=4.1623  acc=0.8924 │ val_loss=2.5609  acc=0.9688 │ lr=0.000138  dp=0.153  27.0s
+2026-02-27 07:20:49 | INFO  |   E 240/300 │ train_loss=4.1513  acc=0.8990 │ val_loss=2.5625  acc=0.9652 │ lr=0.000103  dp=0.160  26.9s
+2026-02-27 07:25:19 | INFO  |   E 250/300 │ train_loss=4.1789  acc=0.8945 │ val_loss=2.5495  acc=0.9688 │ lr=0.000072  dp=0.167  27.0s
+2026-02-27 07:29:49 | INFO  |   E 260/300 │ train_loss=4.2068  acc=0.8866 │ val_loss=2.5615  acc=0.9688 │ lr=0.000047  dp=0.173  27.0s
+2026-02-27 07:34:18 | INFO  |   E 270/300 │ train_loss=4.2330  acc=0.8785 │ val_loss=2.5698  acc=0.9688 │ lr=0.000027  dp=0.180  27.0s
+2026-02-27 07:38:48 | INFO  |   E 280/300 │ train_loss=4.2710  acc=0.8721 │ val_loss=2.5652  acc=0.9700 │ lr=0.000013  dp=0.187  26.9s
+2026-02-27 07:43:18 | INFO  |   E 290/300 │ train_loss=4.2772  acc=0.8764 │ val_loss=2.5602  acc=0.9700 │ lr=0.000004  dp=0.193  26.9s
+2026-02-27 07:47:47 | INFO  |   E 300/300 │ train_loss=4.3237  acc=0.8642 │ val_loss=2.5701  acc=0.9676 │ lr=0.000001  dp=0.200  26.9s
+2026-02-27 07:47:47 | INFO  | 
+Training completed in 134.8 min
+2026-02-27 07:47:47 | INFO  | Best val_loss: 2.542780 at epoch 218
+2026-02-27 07:47:47 | INFO  | 
+── Evaluating best model (epoch 218) ──
+2026-02-27 07:47:54 | INFO  | 
+  Test Results (NAS-PDARTS):
+2026-02-27 07:47:54 | INFO  |     Accuracy  : 97.36%
+2026-02-27 07:47:54 | INFO  |     Precision : 0.9608
+2026-02-27 07:47:54 | INFO  |     Recall    : 0.9736
+2026-02-27 07:47:54 | INFO  |     F1 Score  : 0.9650
+2026-02-27 07:47:54 | INFO  |     AUC       : 0.9999381047382981
+2026-02-27 07:47:54 | INFO  |     EER       : 6.18952617037246e-05
+2026-02-27 07:47:54 | INFO  |     Params    : 225,476
+2026-02-27 07:47:54 | INFO  |     Size      : 0.87 MB
+2026-02-27 07:47:54 | INFO  |     FLOPs     : 407.7 M
+2026-02-27 07:47:54 | INFO  | 
+Generating plots...
+2026-02-27 07:48:06 | INFO  | 
+── Evaluating last model (epoch 300) ──
