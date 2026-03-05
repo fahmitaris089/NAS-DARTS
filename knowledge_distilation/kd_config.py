@@ -77,7 +77,8 @@ class KDConfig:
     # ── Misc ─────────────────────────────────────────────────────────────────
     seed: int          = 42
     device: str        = "auto"     # "auto" → pakai cuda jika tersedia
-    amp: bool          = True       # Automatic Mixed Precision (lebih cepat di GPU)    no_pretrained_student: bool = False  # True → student inisialisasi random (from scratch)
+    amp: bool          = True       # Automatic Mixed Precision (lebih cepat di GPU)
+    no_pretrained_student: bool = False  # True → student inisialisasi random (from scratch)
 
 # Instance default — langsung di-import
 KD_CFG = KDConfig()
