@@ -198,6 +198,24 @@ def load_teacher(cfg: KDConfig, device: torch.device, logger: logging.Logger) ->
         # Aux classifier head juga harus diganti ke num_classes yang benar
         in_features_aux = teacher.AuxLogits.fc.in_features
         teacher.AuxLogits.fc = nn.Linear(in_features_aux, cfg.num_classes)
+        # Remap keys jika teacher di-train dengan fc sebagai nn.Sequential([Dropout, Linear])
+        # (key "fc.1.*" dan "AuxLogits.fc.1.*") → plain nn.Linear ("fc.*", "AuxLogits.fc.*")
+        _raw_sd = torch.load(cfg.teacher_weights, map_location="cpu")
+        _remapped = {}
+        for k, v in _raw_sd.items():
+            nk = k.replace("fc.1.weight", "fc.weight") \
+                  .replace("fc.1.bias",   "fc.bias") \
+                  .replace("AuxLogits.fc.1.weight", "AuxLogits.fc.weight") \
+                  .replace("AuxLogits.fc.1.bias",   "AuxLogits.fc.bias")
+            _remapped[nk] = v
+        teacher.load_state_dict(_remapped, strict=True)
+        teacher.to(device)
+        teacher.eval()
+        for p in teacher.parameters():
+            p.requires_grad = False
+        n_params = sum(p.numel() for p in teacher.parameters()) / 1e6
+        logger.info(f"  Teacher loaded: {n_params:.1f}M params  |  FROZEN")
+        return teacher
 
     elif arch == "resnet50":
         teacher = tv_models.resnet50(weights=None)
