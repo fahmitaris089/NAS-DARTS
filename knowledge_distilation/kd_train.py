@@ -89,6 +89,10 @@ def setup_logger(output_dir: Path) -> logging.Logger:
 def parse_args(cfg: KDConfig) -> KDConfig:
     parser = argparse.ArgumentParser(description="KD Training: EfficientNet-V2-M → NAS Student")
 
+    parser.add_argument("--teacher_arch",      default=cfg.teacher_arch,
+                        help="Teacher architecture. Pilihan: efficientnet_v2_m, "
+                             "efficientnet_b4, densenet121, inception_v3, resnet50, "
+                             "convnext_base, regnet_y_16gf, mobilenet_v3_large, vgg16")
     parser.add_argument("--teacher_weights",   default=cfg.teacher_weights)
     parser.add_argument("--student_weights",   default=cfg.student_weights)
     parser.add_argument("--student_config",    default=cfg.student_config_path)
@@ -115,6 +119,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     args = parser.parse_args()
 
     # Update cfg dengan nilai dari argparse
+    cfg.teacher_arch        = args.teacher_arch
     cfg.teacher_weights     = args.teacher_weights
     cfg.student_weights     = args.student_weights
     cfg.student_config_path = args.student_config
@@ -149,20 +154,81 @@ def parse_args(cfg: KDConfig) -> KDConfig:
 
 # ─── Load Teacher ─────────────────────────────────────────────────────────────
 
+_SUPPORTED_TEACHER_ARCHS = [
+    "efficientnet_v2_m", "efficientnet_b4", "densenet121",
+    "inception_v3", "resnet50", "convnext_base",
+    "regnet_y_16gf", "mobilenet_v3_large", "vgg16",
+]
+
+
 def load_teacher(cfg: KDConfig, device: torch.device, logger: logging.Logger) -> nn.Module:
     """
-    Load EfficientNet-V2-M teacher. Model di-freeze total (eval mode selamanya).
-    """
-    logger.info(f"  Loading teacher: {cfg.teacher_arch}  weights={cfg.teacher_weights}")
+    Load teacher model. Mendukung 9 arsitektur berbeda.
+    Model di-freeze total (eval mode selamanya).
 
-    if cfg.teacher_arch == "efficientnet_v2_m":
-        # Build model dengan num_classes yang sesuai
+    Catatan InceptionV3:
+      - Harus dibangun dengan aux_logits=True agar state_dict cocok
+        (teacher di-train dengan aux head aktif).
+      - Saat eval mode, PyTorch InceptionV3 otomatis hanya return main logits
+        (bukan InceptionOutputs namedtuple) — training loop tidak perlu diubah.
+    """
+    arch = cfg.teacher_arch
+    logger.info(f"  Loading teacher: {arch}  weights={cfg.teacher_weights}")
+
+    if arch == "efficientnet_v2_m":
         teacher = tv_models.efficientnet_v2_m(weights=None)
-        # Ganti classifier layer agar sesuai dengan 834 kelas
         in_features = teacher.classifier[1].in_features
         teacher.classifier[1] = nn.Linear(in_features, cfg.num_classes)
+
+    elif arch == "efficientnet_b4":
+        teacher = tv_models.efficientnet_b4(weights=None)
+        in_features = teacher.classifier[1].in_features
+        teacher.classifier[1] = nn.Linear(in_features, cfg.num_classes)
+
+    elif arch == "densenet121":
+        teacher = tv_models.densenet121(weights=None)
+        in_features = teacher.classifier.in_features
+        teacher.classifier = nn.Linear(in_features, cfg.num_classes)
+
+    elif arch == "inception_v3":
+        # aux_logits=True supaya state_dict match dengan checkpoint yang di-train pakai aux head
+        teacher = tv_models.inception_v3(weights=None, aux_logits=True)
+        in_features = teacher.fc.in_features
+        teacher.fc = nn.Linear(in_features, cfg.num_classes)
+        # Aux classifier head juga harus diganti ke num_classes yang benar
+        in_features_aux = teacher.AuxLogits.fc.in_features
+        teacher.AuxLogits.fc = nn.Linear(in_features_aux, cfg.num_classes)
+
+    elif arch == "resnet50":
+        teacher = tv_models.resnet50(weights=None)
+        in_features = teacher.fc.in_features
+        teacher.fc = nn.Linear(in_features, cfg.num_classes)
+
+    elif arch == "convnext_base":
+        teacher = tv_models.convnext_base(weights=None)
+        in_features = teacher.classifier[2].in_features
+        teacher.classifier[2] = nn.Linear(in_features, cfg.num_classes)
+
+    elif arch == "regnet_y_16gf":
+        teacher = tv_models.regnet_y_16gf(weights=None)
+        in_features = teacher.fc.in_features
+        teacher.fc = nn.Linear(in_features, cfg.num_classes)
+
+    elif arch == "mobilenet_v3_large":
+        teacher = tv_models.mobilenet_v3_large(weights=None)
+        in_features = teacher.classifier[3].in_features
+        teacher.classifier[3] = nn.Linear(in_features, cfg.num_classes)
+
+    elif arch == "vgg16":
+        teacher = tv_models.vgg16(weights=None)
+        in_features = teacher.classifier[6].in_features
+        teacher.classifier[6] = nn.Linear(in_features, cfg.num_classes)
+
     else:
-        raise ValueError(f"Teacher arch tidak dikenal: {cfg.teacher_arch}")
+        raise ValueError(
+            f"Teacher arch tidak dikenal: '{arch}'. "
+            f"Pilihan yang tersedia: {_SUPPORTED_TEACHER_ARCHS}"
+        )
 
     state_dict = torch.load(cfg.teacher_weights, map_location="cpu")
     teacher.load_state_dict(state_dict, strict=True)
