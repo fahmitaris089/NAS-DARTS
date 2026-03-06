@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-03-05T04:22:52.191722",
+  "best_epoch": 134,
+  "best_val_acc": 0.9664,
+  "test_acc": 0.9748,
+  "test_loss": 1.5318,
+  "test_auc": 0.999679008293965,
+  "test_eer_pct": 0.0321,
+  "kd_config": {
+    "teacher": "inception_v3",
+    "temperature": 6.0,
+    "alpha": 0.5,
+    "kd_weight": 0.5,
+    "epochs": 150,
+    "lr": 0.0003
+  }
+}
