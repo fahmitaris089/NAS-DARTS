@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import copy
 import csv
 import json
 import sys
@@ -476,12 +477,27 @@ def main():
     logger.info(f"\nTraining completed in {total_time/60:.1f} min")
     logger.info(f"Best val_loss: {best_val_loss:.6f} at epoch {best_epoch}")
 
+    def load_eval_model(weights_path):
+        eval_model = EvalNetwork(
+            genotype=genotype,
+            C_init=C_init,
+            num_cells=args.num_cells,
+            num_classes=num_classes,
+            auxiliary=use_auxiliary,
+            dropout=RETRAIN_CFG["dropout"],
+        ).to(device)
+        state_dict = torch.load(weights_path, map_location="cpu")
+        eval_model.load_state_dict(state_dict)
+        eval_model.to(device)
+        eval_model.eval()
+        return eval_model
+
     # ─── Test Evaluation ─────────────────────────────────────────────────
     logger.info(f"\n── Evaluating best model (epoch {best_epoch}) ──")
-    model.load_state_dict(torch.load(save_dir / "best_model.pth", map_location=device))
+    eval_model = load_eval_model(save_dir / "best_model.pth")
 
     test_results, cm, cls_report, all_labels, all_preds, all_probs = \
-        evaluate_test(model, test_loader, device, num_classes)
+        evaluate_test(eval_model, test_loader, device, num_classes)
 
     test_results["best_epoch"] = best_epoch
     test_results["best_val_loss"] = float(best_val_loss)
@@ -493,25 +509,24 @@ def main():
 
     # Model efficiency metrics
     from utils import model_size_mb, estimate_flops, measure_latency
-    test_results["model_size_mb"] = model_size_mb(model)
-    flops, _ = estimate_flops(model, device="cpu")
+    test_results["model_size_mb"] = model_size_mb(eval_model)
+    flops, _ = estimate_flops(eval_model, device="cpu")
     if flops:
         test_results["flops"] = flops
         test_results["flops_M"] = flops / 1e6
 
     try:
-        lat_gpu, lat_std = measure_latency(model, device=str(device))
+        lat_gpu, lat_std = measure_latency(eval_model, device=str(device))
         test_results["latency_gpu_ms"] = lat_gpu
         test_results["latency_gpu_std_ms"] = lat_std
     except Exception:
         pass
 
     try:
-        model_cpu = model.cpu()
+        model_cpu = copy.deepcopy(eval_model).cpu()
         lat_cpu, lat_cpu_std = measure_latency(model_cpu, device="cpu")
         test_results["latency_cpu_ms"] = lat_cpu
         test_results["latency_cpu_std_ms"] = lat_cpu_std
-        model.to(device)
     except Exception:
         pass
 
@@ -550,8 +565,8 @@ def main():
 
     # ─── Also evaluate last model ────────────────────────────────────────
     logger.info(f"\n── Evaluating last model (epoch {args.epochs}) ──")
-    model.load_state_dict(torch.load(save_dir / "last_model.pth", map_location=device))
-    last_results, _, _, _, _, _ = evaluate_test(model, test_loader, device, num_classes)
+    last_eval_model = load_eval_model(save_dir / "last_model.pth")
+    last_results, _, _, _, _, _ = evaluate_test(last_eval_model, test_loader, device, num_classes)
     last_results["model_name"] = "NAS-PDARTS"
     last_results["epoch"] = args.epochs
     with open(save_dir / "last_model_results.json", "w") as f:

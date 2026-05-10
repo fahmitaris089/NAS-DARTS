@@ -1,0 +1,22 @@
+{
+  "model": "MobileNetV3Large",
+  "total_params": 5270386,
+  "pth_size_mb": 21.288,
+  "test_acc": 0.9988009592326139,
+  "eer_pct": 0.0,
+  "auc": 1.0,
+  "flops_gflops": 0.469,
+  "host": "Mac ARM (Apple Silicon)",
+  "pytorch_1t_ms": 25.17,
+  "pytorch_4t_ms": 15.87,
+  "onnx_1t_ms": 11.77,
+  "onnx_4t_ms": 9.02,
+  "estimates": {
+    "rpi4": {
+      "onnx_4t_ms": 54
+    },
+    "rpi5": {
+      "onnx_4t_ms": 20
+    }
+  }
+}

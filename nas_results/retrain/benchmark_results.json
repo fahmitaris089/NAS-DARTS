@@ -1,0 +1,24 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain",
+  "architecture": "P-DARTS EvalNetwork C8N8",
+  "total_params": 177754,
+  "pth_size_mb": 1.42,
+  "input_size": 224,
+  "flops_million": 1341.32,
+  "macs_million": 670.66,
+  "host": "Mac ARM (Apple Silicon)",
+  "pytorch_1t_ms": 141.9,
+  "pytorch_4t_ms": 109.23,
+  "onnx_1t_ms": 35.81,
+  "onnx_4t_ms": 17.0,
+  "estimates": {
+    "rpi4": {
+      "pytorch_4t_ms": 1092,
+      "onnx_4t_ms": 102
+    },
+    "rpi5": {
+      "pytorch_4t_ms": 437,
+      "onnx_4t_ms": 37
+    }
+  }
+}
