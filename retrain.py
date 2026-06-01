@@ -279,6 +279,9 @@ def main():
     parser.add_argument("--weight_decay", type=float, default=RETRAIN_CFG["weight_decay"])
     parser.add_argument("--drop_path_prob", type=float, default=RETRAIN_CFG["drop_path_prob"])
     parser.add_argument("--cutout_length", type=int, default=RETRAIN_CFG["cutout_length"])
+    parser.add_argument("--augmentation_policy", type=str, default="v1_legacy",
+                        choices=["v1_legacy", "v2_multi_distance"],
+                        help="Augmentation policy: v1_legacy (with horizontal flip) or v2_multi_distance (no flip)")
     parser.add_argument("--auxiliary", action="store_true", default=RETRAIN_CFG["auxiliary"])
     parser.add_argument("--no_auxiliary", action="store_true")
     parser.add_argument("--seed", type=int, default=SEED)
@@ -313,6 +316,7 @@ def main():
         num_workers=args.num_workers,
         use_augmentation=RETRAIN_CFG["use_augmentation"],
         cutout_length=args.cutout_length,
+        augmentation_policy=args.augmentation_policy,
     )
     num_classes = data_info["num_classes"]
 

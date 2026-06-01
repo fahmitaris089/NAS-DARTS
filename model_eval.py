@@ -200,6 +200,22 @@ class EvalNetwork(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(C_p, num_classes)
 
+    def forward_features(self, x):
+        """Return the pooled penultimate feature vector before classifier dropout."""
+        s0 = s1 = self.stem(x)
+
+        for cell in self.cells:
+            s0, s1 = s1, cell(s0, s1)
+
+        out = self.global_pooling(s1)
+        return out.view(out.size(0), -1)
+
+    def forward_with_embeddings(self, x):
+        """Return logits together with the penultimate embedding vector."""
+        embeddings = self.forward_features(x)
+        logits = self.classifier(self.dropout(embeddings))
+        return logits, embeddings
+
     def forward(self, x):
         s0 = s1 = self.stem(x)
         logits_aux = None
@@ -210,10 +226,9 @@ class EvalNetwork(nn.Module):
                 if self._auxiliary_head is not None:
                     logits_aux = self._auxiliary_head(s1)
 
-        out = self.global_pooling(s1)
-        out = out.view(out.size(0), -1)
-        out = self.dropout(out)
-        logits = self.classifier(out)
+        embeddings = self.global_pooling(s1)
+        embeddings = embeddings.view(embeddings.size(0), -1)
+        logits = self.classifier(self.dropout(embeddings))
 
         if self.training and logits_aux is not None:
             return logits, logits_aux

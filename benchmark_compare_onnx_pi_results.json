@@ -1,0 +1,40 @@
+{
+  "data_dir": "/home/pi/palm-vein/preprocessed_results",
+  "split_path": "/home/pi/palm-vein/split_info.json",
+  "input_size": 224,
+  "threads": 4,
+  "warmup": 20,
+  "num_samples": 100,
+  "model_a": {
+    "label": "MobileNetV3Large",
+    "model_path": "/home/pi/palm-vein/MobileNetV3Large/mobilenetv3_benchmark.onnx",
+    "num_samples": 100,
+    "accuracy": 0.01,
+    "correct": 1,
+    "file_size_mb": 0.215388,
+    "latency_mean_ms": 72.47252416986157,
+    "latency_median_ms": 69.95224950060219,
+    "latency_p95_ms": 84.04481615025361,
+    "latency_std_ms": 4.8772642714391345,
+    "threads": 4
+  },
+  "model_b": {
+    "label": "KD-EfficientNetV2M",
+    "model_path": "/home/pi/palm-vein/run5_efficientNetV2M_t10_a0.5_e500/model_benchmark.onnx",
+    "num_samples": 100,
+    "accuracy": 0.97,
+    "correct": 97,
+    "file_size_mb": 0.385711,
+    "latency_mean_ms": 54.15034867008217,
+    "latency_median_ms": 52.09820700019918,
+    "latency_p95_ms": 68.38905159920614,
+    "latency_std_ms": 5.053165556496889,
+    "threads": 4
+  },
+  "summary": {
+    "faster_model": "KD-EfficientNetV2M",
+    "more_accurate_model": "KD-EfficientNetV2M",
+    "latency_speedup_x": 1.3383574796795783,
+    "accuracy_gap_pct_points": 96.0
+  }
+}

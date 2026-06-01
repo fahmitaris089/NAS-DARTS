@@ -55,7 +55,7 @@ class Cutout:
 # ─── Transforms ─────────────────────────────────────────────────────────────
 
 def get_transforms(split="train", input_size=INPUT_SIZE,
-                   use_augmentation=True, cutout_length=0):
+                   use_augmentation=True, cutout_length=0, augmentation_policy="v1_legacy"):
     """
     Get transforms consistent with teacher pipeline.
 
@@ -64,6 +64,7 @@ def get_transforms(split="train", input_size=INPUT_SIZE,
         input_size:     resize target (224)
         use_augmentation: enable augmentation for train
         cutout_length:  CutOut patch size (0 = disabled)
+        augmentation_policy: "v1_legacy" (with horizontal flip) or "v2_multi_distance" (no flip, more aggressive)
     """
     common_tail = [
         transforms.ToTensor(),
@@ -72,18 +73,36 @@ def get_transforms(split="train", input_size=INPUT_SIZE,
     ]
 
     if split == "train" and use_augmentation:
-        aug_list = [
-            transforms.Resize((input_size, input_size)),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=10),
-            transforms.RandomAffine(
-                degrees=0,
-                translate=(0.05, 0.05),
-                scale=(0.95, 1.05),
-            ),
-            transforms.ColorJitter(brightness=0.15, contrast=0.1),
-            *common_tail,
-        ]
+        if augmentation_policy == "v2_multi_distance":
+            # Augmentation v2: NO horizontal flip (fixes cross-hand confusion)
+            # More aggressive rotation, affine, and color jitter for robustness
+            aug_list = [
+                transforms.Resize((input_size, input_size)),
+                # NO RandomHorizontalFlip — left hand ≠ right hand!
+                transforms.RandomRotation(degrees=15),  # Increased from 10
+                transforms.RandomAffine(
+                    degrees=0,
+                    translate=(0.08, 0.08),  # Increased from 0.05
+                    scale=(0.78, 1.28),      # Wider range (was 0.95-1.05) to simulate distance variation
+                ),
+                transforms.ColorJitter(brightness=0.20, contrast=0.15),  # Increased from 0.15/0.1
+                *common_tail,
+            ]
+        else:
+            # Augmentation v1 (legacy): with horizontal flip
+            aug_list = [
+                transforms.Resize((input_size, input_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=10),
+                transforms.RandomAffine(
+                    degrees=0,
+                    translate=(0.05, 0.05),
+                    scale=(0.95, 1.05),
+                ),
+                transforms.ColorJitter(brightness=0.15, contrast=0.1),
+                *common_tail,
+            ]
+        
         if cutout_length > 0:
             aug_list.append(Cutout(cutout_length))
         return transforms.Compose(aug_list)
@@ -248,12 +267,16 @@ def create_retrain_dataloaders(
     num_workers=None,
     use_augmentation=True,
     cutout_length=0,
+    augmentation_policy="v1_legacy",
 ):
     """
     Create DataLoaders for retrain phase.
 
     Uses FULL training set (not split for search).
     Same val/test as teacher for fair comparison.
+
+    Args:
+        augmentation_policy: "v1_legacy" (with horizontal flip) or "v2_multi_distance" (no flip)
 
     Returns: (train_loader, val_loader, test_loader, info)
     """
@@ -275,10 +298,11 @@ def create_retrain_dataloaders(
     print(f"  Test  : {len(test_samples)} images")
     print(f"  Classes: {num_classes}")
     print(f"  Augment: {'ON' if use_augmentation else 'OFF'}")
+    print(f"  Aug Policy: {augmentation_policy}")
     if cutout_length > 0:
         print(f"  CutOut : {cutout_length}px")
 
-    train_tf = get_transforms("train", input_size, use_augmentation, cutout_length)
+    train_tf = get_transforms("train", input_size, use_augmentation, cutout_length, augmentation_policy)
     eval_tf = get_transforms("val", input_size)
 
     train_ds = PalmVeinDataset(train_samples, train_tf)

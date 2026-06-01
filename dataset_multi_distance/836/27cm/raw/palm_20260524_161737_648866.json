@@ -1,0 +1,456 @@
+{
+  "timestamp": "20260524_161737_648866",
+  "area": 1067627.5,
+  "bbox": [
+    335,
+    0,
+    1585,
+    1080
+  ],
+  "center": [
+    1127,
+    540
+  ],
+  "centered": true,
+  "aspect_ratio": 1.4676,
+  "extent": 0.6237,
+  "hand_like": true,
+  "zone": [
+    384,
+    216,
+    1536,
+    864
+  ],
+  "image": "palm_20260524_161737_648866.png",
+  "image_relative_path": "raw/palm_20260524_161737_648866.png",
+  "brightness": {
+    "mean_gray": 56.609,
+    "std_gray": 58.742,
+    "min_gray": 0,
+    "max_gray": 172,
+    "p95_gray": 144.0,
+    "p99_gray": 156.0,
+    "saturated_fraction": 0.0
+  },
+  "camera_settings": {
+    "size": [
+      1920,
+      1080
+    ],
+    "fps": 30.0,
+    "frame_duration_us": 33333,
+    "exposure_us": 8000,
+    "gain": 1.1,
+    "awbgains": [
+      1.0,
+      1.0
+    ],
+    "brightness": -0.04,
+    "contrast": 1.3,
+    "saturation": 0.0,
+    "denoise": null,
+    "quality_min_laplacian_var": 60.0,
+    "relaxed": false,
+    "capture_zone_ratio": 0.6,
+    "stable_frames": 12,
+    "burst_frames": 10
+  },
+  "burst": {
+    "burst_frames": 10,
+    "selected_frame_index": 7,
+    "selected_burst_score": 0.660527,
+    "burst_score_version": "quality_v1",
+    "score_weights": {
+      "sharpness": 0.45,
+      "contrast": 0.35,
+      "saturation": 0.15,
+      "centering": 0.05
+    },
+    "selection_metric": "gate on centered hand-like frames, then prefer higher burst quality score driven mainly by sharpness and gray-level contrast, penalize saturation, and use center distance as a weak tie-breaker",
+    "frames": [
+      {
+        "frame_index": 0,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 16.407,
+        "burst_score": 0.525,
+        "brightness": {
+          "mean_gray": 56.453,
+          "std_gray": 58.488,
+          "min_gray": 0,
+          "max_gray": 173,
+          "p95_gray": 143.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 1.0,
+          "contrast_score": 0.0,
+          "saturation_score": 0.5,
+          "centering_score": 0.0
+        },
+        "center_distance": 0.127861
+      },
+      {
+        "frame_index": 1,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 13.486,
+        "burst_score": 0.477612,
+        "brightness": {
+          "mean_gray": 56.64,
+          "std_gray": 58.568,
+          "min_gray": 0,
+          "max_gray": 173,
+          "p95_gray": 143.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.600738,
+          "contrast_score": 0.306513,
+          "saturation_score": 0.5,
+          "centering_score": 0.5
+        },
+        "center_distance": 0.127105
+      },
+      {
+        "frame_index": 2,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 12.853,
+        "burst_score": 0.492352,
+        "brightness": {
+          "mean_gray": 56.638,
+          "std_gray": 58.608,
+          "min_gray": 0,
+          "max_gray": 172,
+          "p95_gray": 143.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.514293,
+          "contrast_score": 0.45977,
+          "saturation_score": 0.5,
+          "centering_score": 0.5
+        },
+        "center_distance": 0.127105
+      },
+      {
+        "frame_index": 3,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 9.569,
+        "burst_score": 0.354733,
+        "brightness": {
+          "mean_gray": 56.653,
+          "std_gray": 58.656,
+          "min_gray": 0,
+          "max_gray": 172,
+          "p95_gray": 143.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.065435,
+          "contrast_score": 0.643678,
+          "saturation_score": 0.5,
+          "centering_score": 0.5
+        },
+        "center_distance": 0.127105
+      },
+      {
+        "frame_index": 4,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 9.091,
+        "burst_score": 0.376245,
+        "brightness": {
+          "mean_gray": 56.721,
+          "std_gray": 58.694,
+          "min_gray": 0,
+          "max_gray": 173,
+          "p95_gray": 143.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.0,
+          "contrast_score": 0.789272,
+          "saturation_score": 0.5,
+          "centering_score": 0.5
+        },
+        "center_distance": 0.127105
+      },
+      {
+        "frame_index": 5,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 13.013,
+        "burst_score": 0.651058,
+        "brightness": {
+          "mean_gray": 56.663,
+          "std_gray": 58.719,
+          "min_gray": 0,
+          "max_gray": 172,
+          "p95_gray": 144.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.536195,
+          "contrast_score": 0.885057,
+          "saturation_score": 0.5,
+          "centering_score": 0.5
+        },
+        "center_distance": 0.127105
+      },
+      {
+        "frame_index": 6,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 11.702,
+        "burst_score": 0.634307,
+        "brightness": {
+          "mean_gray": 56.598,
+          "std_gray": 58.748,
+          "min_gray": 0,
+          "max_gray": 172,
+          "p95_gray": 144.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.356995,
+          "contrast_score": 0.996169,
+          "saturation_score": 0.5,
+          "centering_score": 1.0
+        },
+        "center_distance": 0.126348
+      },
+      {
+        "frame_index": 7,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 12.259,
+        "burst_score": 0.660527,
+        "brightness": {
+          "mean_gray": 56.609,
+          "std_gray": 58.742,
+          "min_gray": 0,
+          "max_gray": 172,
+          "p95_gray": 144.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.433142,
+          "contrast_score": 0.97318,
+          "saturation_score": 0.5,
+          "centering_score": 1.0
+        },
+        "center_distance": 0.126348
+      },
+      {
+        "frame_index": 8,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 9.772,
+        "burst_score": 0.491907,
+        "brightness": {
+          "mean_gray": 56.527,
+          "std_gray": 58.749,
+          "min_gray": 0,
+          "max_gray": 172,
+          "p95_gray": 144.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.093127,
+          "contrast_score": 1.0,
+          "saturation_score": 0.5,
+          "centering_score": 0.5
+        },
+        "center_distance": 0.127105
+      },
+      {
+        "frame_index": 9,
+        "hand_like": true,
+        "centered": true,
+        "sharpness": 10.242,
+        "burst_score": 0.511418,
+        "brightness": {
+          "mean_gray": 56.504,
+          "std_gray": 58.742,
+          "min_gray": 0,
+          "max_gray": 172,
+          "p95_gray": 144.0,
+          "p99_gray": 156.0,
+          "saturated_fraction": 0.0
+        },
+        "burst_score_version": "quality_v1",
+        "burst_score_components": {
+          "sharpness_score": 0.157344,
+          "contrast_score": 0.97318,
+          "saturation_score": 0.5,
+          "centering_score": 0.5
+        },
+        "center_distance": 0.127105
+      }
+    ]
+  },
+  "quality_filter": {
+    "enabled": true,
+    "usable": true,
+    "score": 1.0,
+    "reasons": [],
+    "metrics": {
+      "mean": 148.884,
+      "std": 56.589,
+      "p95": 211.0,
+      "p99": 226.0,
+      "dark_fraction_lt_110": 0.168308,
+      "bright_fraction_gt_220": 0.021046,
+      "laplacian_var": 106.955,
+      "gradient_p95": 92.038,
+      "texture_to_gradient_ratio": 1.162076
+    },
+    "thresholds": {
+      "min_final_mean": 110.0,
+      "min_final_p95": 125.0,
+      "min_final_std": 16.0,
+      "max_dark_fraction_lt_110": 0.85,
+      "min_laplacian_var": 60.0,
+      "min_gradient_p95": 40.0,
+      "min_texture_to_gradient_ratio": 0.55,
+      "dark_threshold": 110,
+      "bright_threshold": 220
+    }
+  },
+  "preprocessing": {
+    "enabled": true,
+    "ran": true,
+    "roi_image": "palm_20260524_161737_648866_roi.png",
+    "roi_relative_path": "processed/palm_20260524_161737_648866_roi.png",
+    "final_image": "palm_20260524_161737_648866_final.png",
+    "final_relative_path": "final/palm_20260524_161737_648866_final.png",
+    "mask_image": "palm_20260524_161737_648866_mask.png",
+    "mask_relative_path": "processed/palm_20260524_161737_648866_mask.png",
+    "clahe_image": "palm_20260524_161737_648866_clahe.png",
+    "clahe_relative_path": "processed/palm_20260524_161737_648866_clahe.png",
+    "vessel_preview_image": "palm_20260524_161737_648866_vessel_preview.png",
+    "vessel_preview_relative_path": "visualizations/palm_20260524_161737_648866_vessel_preview.png",
+    "rough_center": [
+      1174,
+      512
+    ],
+    "weighted_center": [
+      1061,
+      511
+    ],
+    "center_before_offset": [
+      1061,
+      511
+    ],
+    "center_after_offset": [
+      1061,
+      511
+    ],
+    "refined_center": [
+      1061,
+      511
+    ],
+    "center_offset_x": 0,
+    "center_offset_y": 0,
+    "center_mode": "adaptive_weighted",
+    "roi_box": [
+      574,
+      24,
+      1548,
+      998
+    ],
+    "centroid_window": 0,
+    "quality": {
+      "raw": {
+        "mean": 56.609,
+        "std": 58.742,
+        "min": 0,
+        "max": 172,
+        "p95": 144.0,
+        "p99": 156.0,
+        "dark_fraction": 0.471321,
+        "saturated_fraction": 0.0,
+        "sharpness": 12.259
+      },
+      "roi": {
+        "mean": 106.497,
+        "std": 42.757,
+        "min": 0,
+        "max": 172,
+        "p95": 151.0,
+        "p99": 160.0,
+        "dark_fraction": 0.086356,
+        "saturated_fraction": 0.0,
+        "sharpness": 22.097
+      },
+      "clahe": {
+        "mean": 119.502,
+        "std": 45.433,
+        "min": 1,
+        "max": 204,
+        "p95": 170.0,
+        "p99": 184.0,
+        "dark_fraction": 0.077214,
+        "saturated_fraction": 0.0,
+        "sharpness": 170.712
+      },
+      "final_source": {
+        "mean": 148.886,
+        "std": 56.999,
+        "min": 0,
+        "max": 255,
+        "p95": 212.0,
+        "p99": 230.0,
+        "dark_fraction": 0.076432,
+        "saturated_fraction": 0.000109,
+        "sharpness": 270.442
+      },
+      "final": {
+        "mean": 148.884,
+        "std": 56.589,
+        "min": 1,
+        "max": 244,
+        "p95": 211.0,
+        "p99": 226.0,
+        "dark_fraction": 0.075654,
+        "saturated_fraction": 0.0,
+        "sharpness": 106.955
+      }
+    },
+    "profile": "dataset_v3",
+    "roi_size": 760,
+    "final_size": 224,
+    "clahe_clip": 2.4,
+    "clahe_tile": [
+      8,
+      8
+    ],
+    "denoise_h": 0.0,
+    "vessel_preview_kernel": 17,
+    "adaptive_roi": true,
+    "adaptive_roi_scale": 0.95,
+    "palm_core_width_ratio": 0.45,
+    "stretch_percentiles": null
+  }
+}

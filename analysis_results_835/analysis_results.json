@@ -1,0 +1,265 @@
+{
+  "dataset_root": "dataset_multi_distance/835",
+  "analysis_results": [
+    {
+      "distance_cm": "22cm",
+      "num_samples": 12,
+      "laplacian_variance": {
+        "mean": 151.4235609407543,
+        "std": 23.568340698378215,
+        "min": 96.29915001331791,
+        "max": 180.26599837322624,
+        "samples": [
+          180.25125643790935,
+          137.54493504134575,
+          132.0610404882467,
+          161.18351790568371,
+          158.4461281997668,
+          159.16442424801178,
+          153.04083482924227,
+          155.92175260835367,
+          180.26599837322624,
+          96.29915001331791,
+          127.27428713682936,
+          175.6294060071177
+        ]
+      },
+      "brightness": {
+        "mean": 170.8307258450255,
+        "std": 4.028609128811979
+      },
+      "contrast": {
+        "mean": 39.65732507507349,
+        "std": 2.7953132245017684
+      },
+      "image_paths": [
+        "dataset_multi_distance/835/22cm/final/palm_20260524_153938_386475_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_153947_643743_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_153953_453265_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_153958_977205_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_154005_587773_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_154012_367176_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_154017_937909_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_154023_178424_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_154037_753130_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_154043_279474_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_154049_450304_final.png",
+        "dataset_multi_distance/835/22cm/final/palm_20260524_154055_419399_final.png"
+      ]
+    },
+    {
+      "distance_cm": "25cm",
+      "num_samples": 8,
+      "laplacian_variance": {
+        "mean": 152.53969263598503,
+        "std": 17.964890579036005,
+        "min": 122.9693873483705,
+        "max": 182.51803648566167,
+        "samples": [
+          171.37458737042485,
+          160.47372613197462,
+          155.1697738687975,
+          136.07212195303083,
+          149.33572276956286,
+          142.4041851600574,
+          122.9693873483705,
+          182.51803648566167
+        ]
+      },
+      "brightness": {
+        "mean": 165.79524822624361,
+        "std": 5.489837402102229
+      },
+      "contrast": {
+        "mean": 41.38304864651738,
+        "std": 2.5961213177606903
+      },
+      "image_paths": [
+        "dataset_multi_distance/835/25cm/final/palm_20260524_154847_407414_final.png",
+        "dataset_multi_distance/835/25cm/final/palm_20260524_154854_604805_final.png",
+        "dataset_multi_distance/835/25cm/final/palm_20260524_154901_425373_final.png",
+        "dataset_multi_distance/835/25cm/final/palm_20260524_154907_192090_final.png",
+        "dataset_multi_distance/835/25cm/final/palm_20260524_154912_825395_final.png",
+        "dataset_multi_distance/835/25cm/final/palm_20260524_154918_478380_final.png",
+        "dataset_multi_distance/835/25cm/final/palm_20260524_154923_837197_final.png",
+        "dataset_multi_distance/835/25cm/final/palm_20260524_154929_349674_final.png"
+      ]
+    },
+    {
+      "distance_cm": "27cm",
+      "num_samples": 11,
+      "laplacian_variance": {
+        "mean": 157.9150365361351,
+        "std": 46.55820717143932,
+        "min": 102.06691470537419,
+        "max": 274.0991298114692,
+        "samples": [
+          167.29974479627631,
+          184.68342670049833,
+          174.3927707183565,
+          139.49219674321324,
+          177.03360774625293,
+          160.99339128841416,
+          106.95517432932951,
+          106.64565777212619,
+          143.4033872861755,
+          102.06691470537419,
+          274.0991298114692
+        ]
+      },
+      "brightness": {
+        "mean": 148.20150343518088,
+        "std": 3.6588126570581743
+      },
+      "contrast": {
+        "mean": 54.83190858625139,
+        "std": 7.87361845365499
+      },
+      "image_paths": [
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161657_054243_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161704_286385_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161710_230085_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161717_844600_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161726_228260_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161731_755906_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161737_648866_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161743_567111_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161750_506181_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_161757_584138_final.png",
+        "dataset_multi_distance/835/27cm/final/palm_20260524_162423_245423_final.png"
+      ]
+    },
+    {
+      "distance_cm": "30cm",
+      "num_samples": 18,
+      "laplacian_variance": {
+        "mean": 137.35470253692264,
+        "std": 28.197728645636246,
+        "min": 88.53087467414446,
+        "max": 184.86387914540816,
+        "samples": [
+          177.27192743556392,
+          168.00335457224693,
+          136.65375671005407,
+          161.20894037450864,
+          144.19538248920875,
+          173.93108240975187,
+          128.26753785857454,
+          118.34190399435249,
+          133.25580180619767,
+          146.1115202151056,
+          154.682307029257,
+          132.72225511098893,
+          115.7270114518165,
+          90.42016329203283,
+          103.73327524232047,
+          88.53087467414446,
+          114.46367185307463,
+          184.86387914540816
+        ]
+      },
+      "brightness": {
+        "mean": 131.78259415745467,
+        "std": 5.346902049939422
+      },
+      "contrast": {
+        "mean": 60.73588356895544,
+        "std": 4.238910837264784
+      },
+      "image_paths": [
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171440_368038_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171446_224254_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171451_565210_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171501_177740_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171506_478665_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171511_869075_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171519_021498_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171523_370514_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171527_731216_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171532_195559_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171537_871996_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171543_157810_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171549_699567_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171555_087480_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171600_353191_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171605_831428_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171610_530188_final.png",
+        "dataset_multi_distance/835/30cm/final/palm_20260601_171617_927887_final.png"
+      ]
+    },
+    {
+      "distance_cm": "32cm",
+      "num_samples": 14,
+      "laplacian_variance": {
+        "mean": 154.7420019073291,
+        "std": 25.15041891133901,
+        "min": 108.84277117346684,
+        "max": 199.66036627442574,
+        "samples": [
+          108.84277117346684,
+          165.49793404790074,
+          149.96719954203488,
+          137.80633033806458,
+          135.42596453182503,
+          179.45731898716522,
+          121.37639021764245,
+          187.0025537749818,
+          173.964992588334,
+          139.91320666964975,
+          169.08307903461383,
+          136.71859127141596,
+          199.66036627442574,
+          161.67132825108678
+        ]
+      },
+      "brightness": {
+        "mean": 129.52787758518588,
+        "std": 2.250200953357266
+      },
+      "contrast": {
+        "mean": 63.61921204173776,
+        "std": 1.8408494235850696
+      },
+      "image_paths": [
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172121_852956_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172128_286538_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172133_896458_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172139_615001_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172145_452711_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172150_929425_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172155_994153_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172201_127176_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172206_439557_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172211_814771_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172217_064250_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172222_485825_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172227_572382_final.png",
+        "dataset_multi_distance/835/32cm/final/palm_20260601_172232_575071_final.png"
+      ]
+    }
+  ],
+  "roi_stats": {},
+  "recommendations": {
+    "summary": "\u26a0\ufe0f Dataset memerlukan perbaikan sebelum training. Total 2 action items.",
+    "volume_assessment": "\u26a0\ufe0f MARGINAL: Total 63 samples. Ini adalah minimum absolut. Model akan memiliki robustness terbatas. Target ideal adalah 125 samples (25 per distance).",
+    "quality_assessment": "\u2705 QUALITY OK: Semua distances memiliki laplacian variance \u2265 60.",
+    "critical_distances": [
+      {
+        "distance": "22cm",
+        "current_samples": 12,
+        "recommended_samples": 15,
+        "reason": "Jarak ekstrem memerlukan lebih banyak sample untuk robustness"
+      },
+      {
+        "distance": "32cm",
+        "current_samples": 14,
+        "recommended_samples": 15,
+        "reason": "Jarak ekstrem memerlukan lebih banyak sample untuk robustness"
+      }
+    ],
+    "action_items": [
+      "RECOMMENDED: Tambahkan 10-15 sample per jarak untuk mencapai 100-125 total samples.",
+      "PRIORITY: Tambahkan 5 sample di jarak kritis: 22cm, 32cm"
+    ]
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "summary": {
+    "total_images": 63,
+    "total_distances": 5,
+    "avg_images_per_distance": 12.6,
+    "global_laplacian_mean": 149.41648169272432,
+    "global_laplacian_std": 30.91106683625004,
+    "global_edge_density_mean": 0.020257898546323292
+  },
+  "per_distance": {
+    "22cm": {
+      "count": 12,
+      "laplacian_var": {
+        "mean": 151.42356094075424,
+        "std": 23.56834069837822,
+        "min": 96.29915001331791,
+        "max": 180.26599837322624
+      },
+      "edge_density": {
+        "mean": 0.005324590773809523,
+        "std": 0.0017579140544245482
+      },
+      "contrast_ratio": {
+        "mean": 0.23205403274081263,
+        "std": 0.014222661270652907
+      }
+    },
+    "25cm": {
+      "count": 8,
+      "laplacian_var": {
+        "mean": 152.53969263598503,
+        "std": 17.964890579036005,
+        "min": 122.9693873483705,
+        "max": 182.51803648566167
+      },
+      "edge_density": {
+        "mean": 0.007772640306122449,
+        "std": 0.0020124705101030147
+      },
+      "contrast_ratio": {
+        "mean": 0.25013961738394874,
+        "std": 0.02093216820786817
+      }
+    },
+    "27cm": {
+      "count": 11,
+      "laplacian_var": {
+        "mean": 157.91503653613512,
+        "std": 46.558207171439314,
+        "min": 102.06691470537419,
+        "max": 274.0991298114692
+      },
+      "edge_density": {
+        "mean": 0.019341010551948055,
+        "std": 0.0019388066584668225
+      },
+      "contrast_ratio": {
+        "mean": 0.3713376780785666,
+        "std": 0.05802231070886537
+      }
+    },
+    "30cm": {
+      "count": 18,
+      "laplacian_var": {
+        "mean": 137.35470253692264,
+        "std": 28.197728645636246,
+        "min": 88.53087467414446,
+        "max": 184.86387914540816
+      },
+      "edge_density": {
+        "mean": 0.025462593891723354,
+        "std": 0.005157930717568206
+      },
+      "contrast_ratio": {
+        "mean": 0.46234530412246044,
+        "std": 0.04585020774868375
+      }
+    },
+    "32cm": {
+      "count": 14,
+      "laplacian_var": {
+        "mean": 154.7420019073291,
+        "std": 25.150418911339013,
+        "min": 108.84277117346684,
+        "max": 199.66036627442574
+      },
+      "edge_density": {
+        "mean": 0.03422097075437318,
+        "std": 0.00586754975533861
+      },
+      "contrast_ratio": {
+        "mean": 0.4911966952965143,
+        "std": 0.012783902675653316
+      }
+    }
+  },
+  "recommendations": [
+    {
+      "priority": "HIGH",
+      "category": "Sample Size",
+      "issue": "Average 12.6 images per distance is below recommended 15-20",
+      "action": "Capture additional 2 images per distance, prioritize distances with <10 samples"
+    },
+    {
+      "priority": "MEDIUM",
+      "category": "Distribution Balance",
+      "issue": "Unbalanced distribution: 8-18 images per distance",
+      "action": "Balance dataset by capturing more images for under-represented distances"
+    },
+    {
+      "priority": "MEDIUM",
+      "category": "Vein Visibility",
+      "issue": "22cm: Low vein pattern visibility (edge_density=0.0053)",
+      "action": "Adjust exposure/contrast settings for 22cm captures"
+    },
+    {
+      "priority": "MEDIUM",
+      "category": "Vein Visibility",
+      "issue": "25cm: Low vein pattern visibility (edge_density=0.0078)",
+      "action": "Adjust exposure/contrast settings for 25cm captures"
+    },
+    {
+      "priority": "MEDIUM",
+      "category": "Vein Visibility",
+      "issue": "27cm: Low vein pattern visibility (edge_density=0.0193)",
+      "action": "Adjust exposure/contrast settings for 27cm captures"
+    },
+    {
+      "priority": "MEDIUM",
+      "category": "Vein Visibility",
+      "issue": "30cm: Low vein pattern visibility (edge_density=0.0255)",
+      "action": "Adjust exposure/contrast settings for 30cm captures"
+    },
+    {
+      "priority": "MEDIUM",
+      "category": "Vein Visibility",
+      "issue": "32cm: Low vein pattern visibility (edge_density=0.0342)",
+      "action": "Adjust exposure/contrast settings for 32cm captures"
+    }
+  ]
+}
