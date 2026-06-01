@@ -221,8 +221,8 @@ def build_retrain_command(
         str(split_path),
         "--output_dir",
         str(args.output_dir),
-        "--C_init",
-        str(args.C_init if args.C_init is not None else run6_cfg["C_init"]),
+        # Only pass --C_init if explicitly set; otherwise let retrain.py auto-tune via find_optimal_C_init()
+        *( ["--C_init", str(args.C_init)] if args.C_init is not None else [] ),
         "--num_cells",
         str(args.num_cells if args.num_cells is not None else run6_cfg["num_cells"]),
         "--epochs",
@@ -369,6 +369,7 @@ def main() -> None:
         }
     else:
         run6_cfg = load_json(args.run6_config)
+
     
     # Validate and load split file
     print(f"Loading split file: {args.split_file}")
@@ -380,6 +381,18 @@ def main() -> None:
     print(f"  Val:   {len(split_info['splits']['val'])} images")
     print(f"  Test:  {len(split_info['splits']['test'])} images")
     
+    # Cap batch_size to train size to avoid drop_last discarding all batches
+    train_size = len(split_info["splits"]["train"])
+    effective_batch = args.batch_size if args.batch_size is not None else run6_cfg.get("batch_size", 32)
+    if effective_batch > train_size:
+        safe_batch = 1
+        for b in [32, 16, 8, 4]:
+            if b <= train_size:
+                safe_batch = b
+                break
+        print(f"  [WARN] batch_size={effective_batch} > train_size={train_size}, auto-reduced to {safe_batch}")
+        args.batch_size = safe_batch
+
     # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
     
