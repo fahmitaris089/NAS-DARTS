@@ -177,8 +177,8 @@ def build_data_dir_structure(split_info: dict[str, Any], output_dir: Path) -> Pa
         
         target_path = data_dir / subject_id / filename
         
-        # Create symlink if not exists
-        if not target_path.exists():
+        # Create symlink if not exists (also check is_symlink to handle broken symlinks)
+        if not target_path.exists() and not target_path.is_symlink():
             target_path.symlink_to(source_path.resolve())
     
     print(f"Data directory with symlinks created at: {data_dir}")
