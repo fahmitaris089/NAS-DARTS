@@ -1,12 +1,4 @@
 {
-  "base_config": "run6",
-  "dataset": "multi_distance",
-  "augmentation_policy": "v2_multi_distance",
-  "hand_pair_margin_loss": false,
-  "hand_pair_margin": 1.0,
-  "hand_pair_weight": 0.3,
-  "split_file": "/root/NAS-DARTS/dataset_multi_distance/split_info.json",
-  "data_dir": null,
   "genotype": {
     "normal": [
       [
@@ -89,23 +81,25 @@
       5
     ]
   },
-  "split_path": null,
-  "output_dir": "nas_results/retrain_run6",
-  "C_init": 5,
+  "data_dir": "/root/NAS-DARTS/nas_results/retrain_run7_robust/data_symlinks",
+  "split_path": "/root/NAS-DARTS/nas_results/retrain_run7_robust/split_info_converted.json",
+  "output_dir": "/root/NAS-DARTS/nas_results/retrain_run7_robust",
+  "C_init": 16,
   "num_cells": 8,
   "epochs": 300,
-  "batch_size": 64,
+  "batch_size": 32,
   "lr": 0.001,
   "weight_decay": 0.05,
   "drop_path_prob": 0.2,
   "cutout_length": 16,
+  "augmentation_policy": "v2_multi_distance",
   "auxiliary": true,
   "no_auxiliary": false,
   "seed": 42,
   "num_workers": 4,
-  "total_params": 225476,
+  "total_params": 314228,
   "device": "cuda",
-  "timestamp": "2026-02-27T05:32:57.523591",
+  "timestamp": "2026-06-01T18:04:48.116799",
   "retrain_cfg": {
     "C_init": "14",
     "num_cells": "8",

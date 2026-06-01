@@ -1,0 +1,180 @@
+{
+  "timestamp": "20260602_013018_620616",
+  "source_image": "dataset_multi_distance/835/final/22cm/palm_20260601_215629_835861.bmp",
+  "decision": {
+    "accepted": true,
+    "decision": "accepted",
+    "reasons": []
+  },
+  "prediction": {
+    "decision_mode": "logits",
+    "score_type": "softmax",
+    "predicted_index": 0,
+    "predicted_subject": "835",
+    "predicted_label": "835",
+    "confidence": 0.9873272776603699,
+    "second_confidence": 0.012672745622694492,
+    "margin": 0.9746545320376754,
+    "classes": [
+      {
+        "index": 0,
+        "subject_id": "835",
+        "label": "835",
+        "probability": 0.9873272776603699
+      },
+      {
+        "index": 1,
+        "subject_id": "836",
+        "label": "836",
+        "probability": 0.012672745622694492
+      }
+    ],
+    "embedding_available": true,
+    "embedding_dimension": 256
+  },
+  "backend": "onnxruntime",
+  "model": {
+    "onnx_path": "nas_results/retrain_run7_robust/model_benchmark.onnx",
+    "metadata_path": "nas_results/retrain_run7_robust/model_benchmark_metadata.json",
+    "subjects": [
+      "835",
+      "836"
+    ],
+    "label_names": [
+      "835",
+      "836"
+    ],
+    "logits_output_name": "logits",
+    "embedding_output_name": "embedding",
+    "template_store_path": null
+  },
+  "thresholds": {
+    "reject_threshold": 0.9,
+    "reject_margin": 0.3,
+    "similarity_threshold": 0.85,
+    "similarity_gap": 0.05,
+    "quality_filter": true,
+    "consensus_window": 5,
+    "consensus_min_agree": 4,
+    "consensus_min_average_confidence": 0.9,
+    "consensus_min_average_margin": 0.3
+  },
+  "decision_mode": "logits",
+  "consensus": null,
+  "preprocessing_debug": {
+    "roi_box": [
+      0,
+      0,
+      224,
+      224
+    ],
+    "rough_center": [
+      112,
+      112
+    ],
+    "weighted_center": [
+      121,
+      111
+    ],
+    "final_center": [
+      121,
+      133
+    ],
+    "hand_bbox": [
+      0,
+      0,
+      224,
+      224
+    ],
+    "palm_bbox": [
+      0,
+      0,
+      224,
+      224
+    ],
+    "quality": {
+      "raw": {
+        "mean": 159.485,
+        "std": 61.014,
+        "min": 1,
+        "max": 247,
+        "p95": 220.0,
+        "p99": 230.0,
+        "dark_fraction": 0.08245,
+        "saturated_fraction": 0.0,
+        "sharpness": 83.316
+      },
+      "roi": {
+        "mean": 159.485,
+        "std": 61.014,
+        "min": 1,
+        "max": 247,
+        "p95": 220.0,
+        "p99": 230.0,
+        "dark_fraction": 0.08245,
+        "saturated_fraction": 0.0,
+        "sharpness": 83.316
+      },
+      "clahe": {
+        "mean": 149.947,
+        "std": 63.147,
+        "min": 2,
+        "max": 255,
+        "p95": 228.0,
+        "p99": 242.0,
+        "dark_fraction": 0.078045,
+        "saturated_fraction": 0.000937,
+        "sharpness": 377.518
+      },
+      "final_source": {
+        "mean": 149.099,
+        "std": 63.685,
+        "min": 0,
+        "max": 255,
+        "p95": 228.0,
+        "p99": 242.0,
+        "dark_fraction": 0.079401,
+        "saturated_fraction": 0.000937,
+        "sharpness": 387.541
+      },
+      "final": {
+        "mean": 149.099,
+        "std": 63.685,
+        "min": 0,
+        "max": 255,
+        "p95": 228.0,
+        "p99": 242.0,
+        "dark_fraction": 0.079401,
+        "saturated_fraction": 0.000937,
+        "sharpness": 387.541
+      }
+    },
+    "quality_filter": {
+      "usable": true,
+      "score": 1.0,
+      "reasons": [],
+      "metrics": {
+        "mean": 149.099,
+        "std": 63.685,
+        "p95": 228.0,
+        "p99": 242.0,
+        "dark_fraction_lt_110": 0.220404,
+        "bright_fraction_gt_220": 0.080098,
+        "laplacian_var": 387.541,
+        "gradient_p95": 134.244,
+        "texture_to_gradient_ratio": 2.886837
+      },
+      "thresholds": {
+        "min_final_mean": 110.0,
+        "min_final_p95": 125.0,
+        "min_final_std": 16.0,
+        "max_dark_fraction_lt_110": 0.85,
+        "min_laplacian_var": 18.0,
+        "min_gradient_p95": 40.0,
+        "min_texture_to_gradient_ratio": 0.55,
+        "dark_threshold": 110,
+        "bright_threshold": 220
+      }
+    }
+  }
+}
