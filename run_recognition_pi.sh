@@ -48,6 +48,12 @@ BASE_ARGS=(
     --quality-filter
     # Save rejected frames for debugging
     --save-rejected
+    # Decision thresholds — calibrated for live Pi camera
+    # (lower than lab default 0.90 because real-time frames have more variation)
+    --reject-threshold              0.80
+    --reject-margin                 0.25
+    --consensus-min-average-confidence 0.80
+    --consensus-min-average-margin     0.25
 )
 
 # ── Per-distance camera tuning ───────────────────────────────────────────────
@@ -80,12 +86,15 @@ case "$DIST" in
         echo "[run_recognition_pi] Distance preset: FAR (32cm+)"
         ;;
     auto)
-        # Mid settings + relaxed detection thresholds (good for initial tuning)
+        # Mid settings + extra-relaxed thresholds (good for initial tuning)
         DIST_ARGS=(
             --exposure-us 8000
             --gain        1.1
             --contrast    1.3
-            --relaxed
+            --reject-threshold              0.72
+            --reject-margin                 0.20
+            --consensus-min-average-confidence 0.72
+            --consensus-min-average-margin     0.20
         )
         echo "[run_recognition_pi] Distance preset: AUTO (mid + relaxed)"
         ;;
