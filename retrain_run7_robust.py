@@ -167,6 +167,7 @@ def build_data_dir_structure(split_info: dict[str, Any], output_dir: Path) -> Pa
     for split_name in ["train", "val", "test"]:
         all_paths.extend(split_info["splits"][split_name])
     
+    created = skipped = broken_fixed = missing_source = 0
     for path_str in all_paths:
         # Path format: "835/final/22cm/image.bmp"
         source_path = dataset_root / path_str
@@ -176,12 +177,29 @@ def build_data_dir_structure(split_info: dict[str, Any], output_dir: Path) -> Pa
         filename = parts[-1]
         
         target_path = data_dir / subject_id / filename
+
+        if target_path.is_symlink():
+            if target_path.exists():
+                skipped += 1
+                continue
+            else:
+                # Broken symlink — remove and recreate
+                target_path.unlink()
+                broken_fixed += 1
         
-        # Create symlink if not exists (also check is_symlink to handle broken symlinks)
-        if not target_path.exists() and not target_path.is_symlink():
-            target_path.symlink_to(source_path.resolve())
-    
+        if not source_path.exists():
+            print(f"  [WARN] Source not found, skipping: {source_path}")
+            missing_source += 1
+            continue
+
+        target_path.symlink_to(source_path.resolve())
+        created += 1
+
     print(f"Data directory with symlinks created at: {data_dir}")
+    print(f"  Symlinks: {created} created, {skipped} already valid, {broken_fixed} broken→fixed, {missing_source} missing source")
+    if missing_source > 0:
+        print(f"  [ERROR] {missing_source} source files not found in {dataset_root}")
+        print(f"          Check that preprocessing has been run on the server.")
     return data_dir
 
 
