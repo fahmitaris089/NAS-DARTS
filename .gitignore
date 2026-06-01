@@ -41,6 +41,9 @@ Thumbs.db
 *.pth
 *.pt
 *.onnx
+# Exception: deployment-ready ONNX artifacts
+!nas_results/retrain_run7_robust/model_benchmark.onnx
+!nas_results/retrain_run7_robust/model_benchmark_metadata.json
 
 # Large data files
 *.h5

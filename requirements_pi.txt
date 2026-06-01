@@ -1,0 +1,12 @@
+# Raspberry Pi requirements for NAS palm-vein recognition
+# Install with: pip install -r requirements_pi.txt
+
+# Core inference
+onnxruntime>=1.16.0
+numpy>=1.24.0
+
+# Image processing
+opencv-python-headless>=4.8.0
+
+# Camera (Pi only — comment out if not using live mode)
+# picamera2>=0.3.12
