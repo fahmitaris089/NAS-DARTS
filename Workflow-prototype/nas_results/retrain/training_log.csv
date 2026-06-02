@@ -1,0 +1,2 @@
+epoch,train_loss,train_acc,val_loss,val_acc,lr,drop_path,epoch_time_sec
+1,9.430421,0.001803,6.730684,0.001199,0.00010900,0.0007,34.81

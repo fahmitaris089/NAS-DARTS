@@ -1,0 +1,31 @@
+{
+  "exported_at": "2026-05-14T11:02:56.517561",
+  "model_dir": "nas_results/retrain_run6_plus2_e100",
+  "model_path": "nas_results/retrain_run6_plus2_e100/best_model.pth",
+  "config_path": "nas_results/retrain_run6_plus2_e100/config.json",
+  "onnx_path": "nas_results/retrain_run6_plus2_e100/model_benchmark.onnx",
+  "genotype_source": "config.genotype",
+  "input_size": 224,
+  "opset": 13,
+  "num_classes": 2,
+  "subjects": [
+    "835",
+    "836"
+  ],
+  "label_names": [
+    "835",
+    "836"
+  ],
+  "c_init": 5,
+  "num_cells": 8,
+  "model_size_mb": 0.215388,
+  "backend": "onnxruntime",
+  "output_names": [
+    "logits",
+    "embedding"
+  ],
+  "logits_output_name": "logits",
+  "embedding_output_name": "embedding",
+  "embedding_dimension": 80,
+  "includes_embeddings": true
+}
