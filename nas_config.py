@@ -59,14 +59,13 @@ TOP_K_EDGES       = 2     # edges kept per node when deriving genotype
 # Each stage: (num_cells, epochs, ops_to_keep)
 # Stage 1: shallow + all ops → Stage 2: deeper + prune → Stage 3: deepest + prune more
 
-# ── Experiment 1: quick search (30 epochs/stage) with 6-op space ──
-# alpha_warmup=10 → 20 effective alpha-update epochs per stage (warmup resets per stage!)
-# 15 epochs/stage would be broken: with warmup=15, alpha never updates (epoch > 15 never reached)
-# Restore original stages for Experiment 2 (50 epochs/stage, 7-op space with MBConv)
+# ── Experiment 1: full search (50 epochs/stage) with 6-op space ──
+# alpha_warmup=10 → 40 effective alpha-update epochs per stage (warmup resets per stage!)
+# Consistent with run6 methodology (proven to converge)
 PDARTS_STAGES = [
-    {"cells": 5,  "epochs": 30, "num_ops": 6},   # all 6 ops
-    {"cells": 8,  "epochs": 30, "num_ops": 4},   # prune to 4
-    {"cells": 11, "epochs": 30, "num_ops": 3},   # prune to 3
+    {"cells": 5,  "epochs": 50, "num_ops": 6},   # all 6 ops
+    {"cells": 8,  "epochs": 50, "num_ops": 4},   # prune to 4
+    {"cells": 11, "epochs": 50, "num_ops": 3},   # prune to 3
 ]
 
 # Full-length stages for Experiment 2+
