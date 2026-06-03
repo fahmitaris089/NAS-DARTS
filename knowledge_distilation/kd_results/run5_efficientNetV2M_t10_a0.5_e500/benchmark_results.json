@@ -1,0 +1,24 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/run5_efficientNetV2M_t10_a0.5_e500",
+  "architecture": "P-DARTS EvalNetwork C4N8",
+  "total_params": 82606,
+  "pth_size_mb": 0.529,
+  "input_size": 224,
+  "flops_million": 597.4,
+  "macs_million": 298.7,
+  "host": "Mac ARM (Apple Silicon)",
+  "pytorch_1t_ms": 142.05,
+  "pytorch_4t_ms": 77.73,
+  "onnx_1t_ms": null,
+  "onnx_4t_ms": null,
+  "estimates": {
+    "rpi4": {
+      "pytorch_4t_ms": 777,
+      "onnx_4t_ms": null
+    },
+    "rpi5": {
+      "pytorch_4t_ms": 311,
+      "onnx_4t_ms": null
+    }
+  }
+}

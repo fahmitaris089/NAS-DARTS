@@ -419,3 +419,182 @@ If only one iteration can be done, the highest-value sequence is:
 5. Benchmark against MobileNetV3Large.
 
 This is the most defensible path to a NAS result that is not just small in parameters, but actually cheaper in computation and more realistic for Raspberry Pi deployment.
+
+---
+
+## Concrete Experiments — June 2026
+
+### Benchmark Baseline (Measured on Raspberry Pi 5, 4 GB, 4 threads)
+
+| Model                     | Size      | Params | FLOPs  | Pi 5 Latency | Accuracy |
+| ------------------------- | --------- | ------ | ------ | ------------ | -------- |
+| MobileNetV3Large          | 21.077 MB | ~5.4M  | ~219 M | **15.58 ms** | 100%     |
+| KD-EfficientNetV2M (run5) | 0.386 MB  | ~225K  | ~407 M | 52.14 ms     | 97%      |
+
+Root cause confirmed: NAS model is 55× smaller but 3.3× slower because:
+
+- Genotype dominated by `dil_conv_5x5` and `dil_conv_3x3`
+- Dilated conv has no ACL/XNNPACK kernel on ARM → fallback to generic kernel
+- Cell-based topology with many small branches → high operator dispatch overhead
+
+Target after redesign: latency < 15 ms, params < 300K, accuracy ≥ 97%
+
+---
+
+### Experiment 1 — Quick Validation: Remove Dilated Conv (estimated 1–2 compute days)
+
+**Hypothesis:** replacing dilated conv with sep_conv alone is enough to fix latency.
+
+**Changes to `nas_config.py`:**
+
+```python
+# Remove dil_conv_3x3 and dil_conv_5x5 (6 ops total)
+PRIMITIVES = [
+    'none', 'skip_connect',
+    'sep_conv_3x3', 'sep_conv_5x5',
+    'avg_pool_3x3', 'max_pool_3x3',
+]
+
+# Quick search: 15 epochs per stage
+PDARTS_STAGES = [
+    {"cells": 5,  "epochs": 15, "num_ops": 6},
+    {"cells": 8,  "epochs": 15, "num_ops": 4},
+    {"cells": 11, "epochs": 15, "num_ops": 3},
+]
+```
+
+**Search command:**
+
+```bash
+python search.py --output_dir nas_results/search_mobile_v1
+```
+
+**Retrain command:**
+
+```bash
+python retrain.py \
+    --genotype nas_results/search_mobile_v1/genotype_final.json \
+    --C_init 8 \
+    --epochs 200 \
+    --output_dir nas_results/retrain_mobile_v1_C8
+```
+
+**Expected metrics:**
+
+| Metric       | Target                   |
+| ------------ | ------------------------ |
+| FLOPs        | ~80–120 M (↓ from 407 M) |
+| Params       | ~80–120K                 |
+| Pi 5 latency | ~10–15 ms                |
+| Accuracy     | ≥ 97%                    |
+
+**Decision gate:** if latency < 15 ms AND accuracy ≥ 97% → proceed to Experiment 3 (quantization). Otherwise proceed to Experiment 2.
+
+---
+
+### Experiment 2 — Full Search with MBConv (estimated 4–5 compute days)
+
+**Hypothesis:** MBConv (inverted residual, XNNPACK-optimized) gives better accuracy-FLOPs tradeoff than sep_conv.
+
+**New class to add to `operations.py`:**
+
+```python
+class MBConv(nn.Module):
+    """Inverted Residual Block (MobileNetV2-style).
+    PW expand → DW 3×3 → PW project → BN.
+    expand_ratio=3 (light) or 6 (richer).
+    """
+    def __init__(self, C, stride, expand_ratio=3, affine=False):
+        super().__init__()
+        C_mid = C * expand_ratio
+        self.op = nn.Sequential(
+            nn.ReLU(inplace=False),
+            nn.Conv2d(C, C_mid, 1, bias=False),
+            nn.BatchNorm2d(C_mid, affine=affine),
+            nn.ReLU(inplace=False),
+            nn.Conv2d(C_mid, C_mid, 3, stride=stride, padding=1,
+                      groups=C_mid, bias=False),
+            nn.BatchNorm2d(C_mid, affine=affine),
+            nn.Conv2d(C_mid, C, 1, bias=False),
+            nn.BatchNorm2d(C, affine=affine),
+        )
+        self.use_skip = (stride == 1)
+
+    def forward(self, x):
+        return x + self.op(x) if self.use_skip else self.op(x)
+```
+
+**Add to `OPS` dict in `operations.py`:**
+
+```python
+'mbconv3_3x3': lambda C, stride, affine: MBConv(C, stride, expand_ratio=3, affine=affine),
+'mbconv6_3x3': lambda C, stride, affine: MBConv(C, stride, expand_ratio=6, affine=affine),
+```
+
+**Update `nas_config.py`:**
+
+```python
+PRIMITIVES = [
+    'none', 'skip_connect',
+    'sep_conv_3x3', 'sep_conv_5x5',
+    'mbconv3_3x3', 'mbconv6_3x3',
+    'avg_pool_3x3',
+]  # 7 ops
+
+PDARTS_STAGES = [
+    {"cells": 5,  "epochs": 50, "num_ops": 7},
+    {"cells": 8,  "epochs": 50, "num_ops": 5},
+    {"cells": 11, "epochs": 50, "num_ops": 3},
+]
+```
+
+**Multi-C_init retrain:**
+
+```bash
+for C in 6 8 12; do
+    python retrain.py \
+        --genotype nas_results/search_mobile_v2/genotype_final.json \
+        --C_init $C \
+        --epochs 300 \
+        --output_dir nas_results/retrain_mobile_v2_C${C}
+done
+```
+
+**Expected metrics per C_init:**
+
+| C_init | FLOPs      | Params    | Pi 5 Latency (est.) |
+| ------ | ---------- | --------- | ------------------- |
+| 6      | ~30–50 M   | ~50–80K   | ~5–8 ms             |
+| 8      | ~50–80 M   | ~80–120K  | ~8–12 ms            |
+| 12     | ~100–150 M | ~150–250K | ~12–15 ms           |
+
+---
+
+### Experiment 3 — INT8 Static Quantization (estimated 1 compute day)
+
+Apply after best model from Experiment 1 or 2 is selected.
+
+```python
+from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantType
+
+quantize_static(
+    model_input="nas_results/retrain_mobile_vX_CY/model_benchmark.onnx",
+    model_output="nas_results/retrain_mobile_vX_CY/model_benchmark_int8.onnx",
+    calibration_data_reader=calibration_reader,   # ~50 samples from val set
+    quant_type=QuantType.QInt8,
+)
+```
+
+Expected latency reduction: 2–3× vs float32 baseline.
+
+---
+
+### Execution Priority
+
+```
+Step 1  →  Experiment 1  (quick, validate dilated-conv hypothesis)
+Step 2  →  Benchmark on Pi 5, compare against 15.58 ms MobileNet baseline
+Step 3a →  If latency OK (< 15ms): apply Experiment 3 (INT8)
+Step 3b →  If latency still too high: run Experiment 2 (add MBConv)
+Step 4  →  Final benchmark: NAS best vs MobileNetV3Large on Pi 5
+```

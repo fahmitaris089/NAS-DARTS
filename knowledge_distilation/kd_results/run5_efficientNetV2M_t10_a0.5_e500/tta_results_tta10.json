@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-03-07T20:14:34.424628",
+  "model_dir": "knowledge_distilation\\kd_results\\run5_efficientNetV2M_t10_a0.5_e500",
+  "tta_views": 10,
+  "tta_view_names": [
+    "original",
+    "hflip",
+    "rotate_+5",
+    "rotate_-5",
+    "bright_1.1",
+    "bright_0.9",
+    "translate_r",
+    "translate_d",
+    "rotate_+3",
+    "rotate_-3"
+  ],
+  "no_tta": false,
+  "results": {
+    "val": {
+      "acc": 0.9868,
+      "loss": 1.2174,
+      "auc": 0.9999021191210298,
+      "eer_pct": 0.0098,
+      "per_view_acc": {
+        "original": 0.9856,
+        "hflip": 0.9832,
+        "rotate_+5": 0.9784,
+        "rotate_-5": 0.9784,
+        "bright_1.1": 0.9844,
+        "bright_0.9": 0.982,
+        "translate_r": 0.982,
+        "translate_d": 0.9856,
+        "rotate_+3": 0.982,
+        "rotate_-3": 0.982
+      },
+      "n_samples": 834,
+      "time_s": 5.7
+    },
+    "test": {
+      "acc": 0.988,
+      "loss": 1.194,
+      "auc": 0.999795601693915,
+      "eer_pct": 0.0204,
+      "per_view_acc": {
+        "original": 0.9892,
+        "hflip": 0.9892,
+        "rotate_+5": 0.9844,
+        "rotate_-5": 0.982,
+        "bright_1.1": 0.9904,
+        "bright_0.9": 0.9868,
+        "translate_r": 0.9916,
+        "translate_d": 0.9856,
+        "rotate_+3": 0.9844,
+        "rotate_-3": 0.9844
+      },
+      "n_samples": 834,
+      "time_s": 5.5
+    }
+  }
+}

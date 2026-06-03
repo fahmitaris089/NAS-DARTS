@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-03-07T14:22:29.996124",
+  "model_dir": "knowledge_distilation\\kd_results\\run5_efficientNetV2M_t10_a0.5_e350",
+  "tta_views": 5,
+  "tta_view_names": [
+    "original",
+    "hflip",
+    "rotate_+5",
+    "rotate_-5",
+    "bright_1.1"
+  ],
+  "no_tta": false,
+  "results": {
+    "val": {
+      "acc": 0.982,
+      "loss": 1.2666,
+      "auc": 0.999894921997576,
+      "eer_pct": 0.0105,
+      "per_view_acc": {
+        "original": 0.9796,
+        "hflip": 0.9808,
+        "rotate_+5": 0.9808,
+        "rotate_-5": 0.9748,
+        "bright_1.1": 0.9796
+      },
+      "n_samples": 834,
+      "time_s": 3.3
+    },
+    "test": {
+      "acc": 0.988,
+      "loss": 1.2404,
+      "auc": 0.9997970411186058,
+      "eer_pct": 0.0203,
+      "per_view_acc": {
+        "original": 0.988,
+        "hflip": 0.988,
+        "rotate_+5": 0.9832,
+        "rotate_-5": 0.9796,
+        "bright_1.1": 0.988
+      },
+      "n_samples": 834,
+      "time_s": 3.1
+    }
+  }
+}
