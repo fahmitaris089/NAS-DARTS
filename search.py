@@ -182,7 +182,8 @@ def prune_operations(model, primitives, num_ops_to_keep, logger=None):
     # so it wastes a slot that could go to a real conv op.
     STRUCTURAL_OPS = {'skip_connect'}
     # Convolution ops — guarantee at least MIN_CONV survive pruning
-    CONV_OPS = {'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5'}
+    CONV_OPS = {'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5',
+                'mbconv3_3x3', 'mbconv6_3x3'}
     MIN_CONV = 2  # ensure genotype diversity (≥2 different conv ops)
 
     kept = []

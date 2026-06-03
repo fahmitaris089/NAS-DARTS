@@ -30,16 +30,15 @@ IMAGENET_STD  = [0.229, 0.224, 0.225]
 
 # ─── Search Space Primitives ─────────────────────────────────────────────────
 
-# ── Experiment 1: remove dil_conv_3x3 / dil_conv_5x5 (no XNNPACK/ACL kernel on ARM) ──
+# ── Experiment 2: remove dil_conv + max_pool, add MBConv (stride-2 stem) ──
 # Original 8-op space (with dilated conv) is preserved as PRIMITIVES_FULL below.
 PRIMITIVES = [
     'none',           # zero output (prune this edge)
     'skip_connect',   # identity / factorized reduce
-    'sep_conv_3x3',   # depthwise-separable 3×3  (XNNPACK-friendly)
-    'sep_conv_5x5',   # depthwise-separable 5×5  (XNNPACK-friendly)
+    'mbconv3_3x3',    # inverted residual expand=3 (lightweight MBConv)
+    'mbconv6_3x3',    # inverted residual expand=6 (richer MBConv)
     'avg_pool_3x3',   # average pooling 3×3
-    'max_pool_3x3',   # max pooling 3×3
-]  # 6 ops — dil_conv_3x3 / dil_conv_5x5 removed
+]  # 5 ops — sep_conv removed to prevent dominance over MBConv during search
 
 # Original full search space (8 ops, used in run6)
 PRIMITIVES_FULL = [
@@ -59,13 +58,12 @@ TOP_K_EDGES       = 2     # edges kept per node when deriving genotype
 # Each stage: (num_cells, epochs, ops_to_keep)
 # Stage 1: shallow + all ops → Stage 2: deeper + prune → Stage 3: deepest + prune more
 
-# ── Experiment 1: full search (50 epochs/stage) with 6-op space ──
+# ── Experiment 2: full search (50 epochs/stage) with 7-op space + stride-2 stem ──
 # alpha_warmup=10 → 40 effective alpha-update epochs per stage (warmup resets per stage!)
-# Consistent with run6 methodology (proven to converge)
 PDARTS_STAGES = [
-    {"cells": 5,  "epochs": 50, "num_ops": 6},   # all 6 ops
-    {"cells": 8,  "epochs": 50, "num_ops": 4},   # prune to 4
-    {"cells": 11, "epochs": 50, "num_ops": 3},   # prune to 3
+    {"cells": 5,  "epochs": 25, "num_ops": 5},   # all 5 ops
+    {"cells": 8,  "epochs": 25, "num_ops": 4},   # prune to 4
+    {"cells": 11, "epochs": 25, "num_ops": 3},   # prune to 3
 ]
 
 # Full-length stages for Experiment 2+

@@ -27,6 +27,9 @@ OPS = {
     'dil_conv_5x5': lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine),
     'avg_pool_3x3': lambda C, stride, affine: PoolBN('avg', C, 3, stride, 1, affine=affine),
     'max_pool_3x3': lambda C, stride, affine: PoolBN('max', C, 3, stride, 1, affine=affine),
+    # Experiment 2: MobileNet-style inverted residuals (XNNPACK-optimized on ARM)
+    'mbconv3_3x3':  lambda C, stride, affine: MBConv(C, stride, expand_ratio=3, affine=affine),
+    'mbconv6_3x3':  lambda C, stride, affine: MBConv(C, stride, expand_ratio=6, affine=affine),
 }
 
 
@@ -167,3 +170,37 @@ class DropPath(nn.Module):
         # Per-sample random mask (batch dimension preserved)
         mask = torch.zeros(x.size(0), 1, 1, 1, device=x.device).bernoulli_(keep_prob)
         return x * mask / keep_prob
+
+
+# ─── MBConv (Inverted Residual — MobileNetV2 style) ────────────────────────────────────────────
+
+class MBConv(nn.Module):
+    """
+    Inverted Residual Block (MobileNetV2-style):
+      ReLU → PW expand → BN → ReLU → DW 3×3 → BN → PW project → BN
+
+    expand_ratio=3: lighter (fewer FLOPs, XNNPACK-friendly depthwise on ARM)
+    expand_ratio=6: richer capacity, same efficient structure
+
+    Skip connection applied only when stride=1 (same spatial dims).
+    Unlike SepConv (2× stacked), this is a single forward pass.
+    """
+
+    def __init__(self, C, stride, expand_ratio=3, affine=False):
+        super().__init__()
+        C_mid = C * expand_ratio
+        self.op = nn.Sequential(
+            nn.ReLU(inplace=False),
+            nn.Conv2d(C, C_mid, 1, bias=False),            # PW expand
+            nn.BatchNorm2d(C_mid, affine=affine),
+            nn.ReLU(inplace=False),
+            nn.Conv2d(C_mid, C_mid, 3, stride=stride,      # DW 3×3
+                      padding=1, groups=C_mid, bias=False),
+            nn.BatchNorm2d(C_mid, affine=affine),
+            nn.Conv2d(C_mid, C, 1, bias=False),            # PW project
+            nn.BatchNorm2d(C, affine=affine),
+        )
+        self.use_skip = (stride == 1)
+
+    def forward(self, x):
+        return x + self.op(x) if self.use_skip else self.op(x)

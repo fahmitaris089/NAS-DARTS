@@ -173,7 +173,7 @@ class SearchNetwork(nn.Module):
 
         # Stem
         self.stem = nn.Sequential(
-            nn.Conv2d(3, C_curr, 3, padding=1, bias=False),
+            nn.Conv2d(3, C_curr, 3, stride=2, padding=1, bias=False),  # 224→112
             nn.BatchNorm2d(C_curr),
         )
 
