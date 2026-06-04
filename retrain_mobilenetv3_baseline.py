@@ -115,7 +115,7 @@ def parse_args():
     p.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
                    help="Output directory for results")
     p.add_argument("--epochs", type=int, default=300)
-    p.add_argument("--batch_size", type=int, default=16,
+    p.add_argument("--batch_size", type=int, default=16)
     p.add_argument("--lr", type=float, default=0.001)
     p.add_argument("--weight_decay", type=float, default=0.05)
     p.add_argument("--warmup_epochs", type=int, default=10)
