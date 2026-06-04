@@ -51,7 +51,7 @@ from retrain_run7_robust import (
     convert_split_to_retrain_format,
     build_data_dir_structure,
 )
-from retrain import evaluate_model
+from retrain import evaluate_test as evaluate_model
 from palm_vein_dataset import create_retrain_dataloaders
 from utils import set_seed, get_device, setup_logger, model_size_mb, estimate_flops, measure_latency
 
