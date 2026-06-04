@@ -219,7 +219,7 @@ def main():
     # ── Evaluate on test set ─────────────────────────────────────────────────
     model.load_state_dict(torch.load(output_dir / "best_model.pth",
                                      map_location=device))
-    test_results, cm, cls_report, _, _, _ = evaluate_model(model, test_loader, device)
+    test_results, cm, cls_report, _, _, _ = evaluate_model(model, test_loader, device, num_classes)
     test_results["best_epoch"] = best_epoch
     test_results["best_val_loss"] = float(best_val_loss)
     test_results["total_params"] = total_params
