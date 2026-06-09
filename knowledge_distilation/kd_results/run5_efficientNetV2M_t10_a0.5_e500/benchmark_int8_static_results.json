@@ -3,11 +3,11 @@
   "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/run5_efficientNetV2M_t10_a0.5_e500/model_benchmark.onnx",
   "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/run5_efficientNetV2M_t10_a0.5_e500/model_benchmark_int8_static.onnx",
   "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/preprocessed_results",
-  "num_calib": 200,
+  "num_calib": 100,
   "threads": 4,
   "fp32_size_mb": 0.3857,
-  "int8_size_mb": 0.3969,
-  "fp32_4t_ms": 11.2184,
-  "int8_4t_ms": 14.8055,
-  "speedup_x": 0.7577
+  "int8_size_mb": 0.3968,
+  "fp32_4t_ms": 12.4382,
+  "int8_4t_ms": 13.6502,
+  "speedup_x": 0.9112
 }

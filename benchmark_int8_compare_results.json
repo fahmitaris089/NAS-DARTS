@@ -1,0 +1,61 @@
+{
+  "data_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/dataset_multi_distance",
+  "split_path": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_mobile_v2_C4/split_info_converted.json",
+  "threads": 4,
+  "warmup": 20,
+  "num_calib": 80,
+  "model_a": {
+    "label": "NAS-DARTS-C4",
+    "fp32": {
+      "model_path": "nas_results/retrain_mobile_v2_C4/model_benchmark.onnx",
+      "size_mb": 0.345,
+      "accuracy": 1.0,
+      "correct": 20,
+      "num_samples": 20,
+      "mean_ms": 8.191,
+      "median_ms": 8.137,
+      "p95_ms": 8.409,
+      "std_ms": 0.143
+    },
+    "int8": {
+      "model_path": "nas_results/retrain_mobile_v2_C4/model_benchmark_int8.onnx",
+      "size_mb": 0.5239,
+      "accuracy": 1.0,
+      "correct": 20,
+      "num_samples": 20,
+      "mean_ms": 4.368,
+      "median_ms": 4.353,
+      "p95_ms": 4.617,
+      "std_ms": 0.252
+    },
+    "int8_path": "nas_results/retrain_mobile_v2_C4/model_benchmark_int8.onnx",
+    "speedup_x": 1.875
+  },
+  "model_b": {
+    "label": "MobileNetV3Large",
+    "fp32": {
+      "model_path": "nas_results/baseline_mobilenetv3/mobilenetv3_benchmark.onnx",
+      "size_mb": 16.8137,
+      "accuracy": 1.0,
+      "correct": 20,
+      "num_samples": 20,
+      "mean_ms": 8.361,
+      "median_ms": 8.322,
+      "p95_ms": 8.561,
+      "std_ms": 0.125
+    },
+    "int8": {
+      "model_path": "nas_results/baseline_mobilenetv3/mobilenetv3_benchmark_int8.onnx",
+      "size_mb": 4.719,
+      "accuracy": 1.0,
+      "correct": 20,
+      "num_samples": 20,
+      "mean_ms": 2.167,
+      "median_ms": 2.112,
+      "p95_ms": 2.29,
+      "std_ms": 0.084
+    },
+    "int8_path": "nas_results/baseline_mobilenetv3/mobilenetv3_benchmark_int8.onnx",
+    "speedup_x": 3.858
+  }
+}

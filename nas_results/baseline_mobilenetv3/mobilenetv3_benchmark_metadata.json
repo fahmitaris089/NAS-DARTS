@@ -1,0 +1,14 @@
+{
+  "exported_at": "2026-06-04T10:54:06.762485",
+  "model": "MobileNetV3Large",
+  "weights_path": "nas_results/baseline_mobilenetv3/best_model.pth",
+  "onnx_path": "nas_results/baseline_mobilenetv3/mobilenetv3_benchmark.onnx",
+  "num_classes": 2,
+  "input_size": 224,
+  "opset": 13,
+  "backend": "onnxruntime",
+  "output_names": [
+    "logits"
+  ],
+  "logits_output_name": "logits"
+}

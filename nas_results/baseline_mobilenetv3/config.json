@@ -1,0 +1,15 @@
+{
+  "split_path": "/root/NAS-DARTS/dataset_multi_distance/split_info.json",
+  "output_dir": "nas_results/baseline_mobilenetv3",
+  "epochs": 100,
+  "batch_size": 16,
+  "lr": 0.001,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "label_smoothing": 0.1,
+  "grad_clip": 1.0,
+  "seed": 42,
+  "num_workers": 4,
+  "num_classes": 2,
+  "timestamp": "2026-06-04T00:44:57.185947"
+}

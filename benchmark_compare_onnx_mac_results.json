@@ -1,0 +1,42 @@
+{
+  "data_dir": "dataset_multi_distance",
+  "split_path": "nas_results/retrain_mobile_v2_C4/split_info_converted.json",
+  "input_size": 224,
+  "threads": 4,
+  "warmup": 20,
+  "num_samples": 20,
+  "model_a": {
+    "label": "NAS-DARTS-C4",
+    "model_path": "nas_results/retrain_mobile_v2_C4/model_benchmark.onnx",
+    "num_samples": 20,
+    "accuracy": 1.0,
+    "correct": 20,
+    "accuracy_evaluated": 20,
+    "file_size_mb": 0.344986,
+    "latency_mean_ms": 8.58630219999999,
+    "latency_median_ms": 8.444459000000016,
+    "latency_p95_ms": 9.385041349999995,
+    "latency_std_ms": 0.47671615236969905,
+    "threads": 4
+  },
+  "model_b": {
+    "label": "MobileNetV3Large-baseline",
+    "model_path": "nas_results/baseline_mobilenetv3/mobilenetv3_benchmark.onnx",
+    "num_samples": 20,
+    "accuracy": 1.0,
+    "correct": 20,
+    "accuracy_evaluated": 20,
+    "file_size_mb": 16.813716,
+    "latency_mean_ms": 8.652087349999986,
+    "latency_median_ms": 8.61131199999987,
+    "latency_p95_ms": 8.848199399999935,
+    "latency_std_ms": 0.14819452549545895,
+    "threads": 4
+  },
+  "summary": {
+    "faster_model": "NAS-DARTS-C4",
+    "more_accurate_model": "MobileNetV3Large-baseline",
+    "latency_speedup_x": 1.0076616392560696,
+    "accuracy_gap_pct_points": 0.0
+  }
+}

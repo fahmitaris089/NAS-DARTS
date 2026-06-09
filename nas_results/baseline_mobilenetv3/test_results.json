@@ -1,0 +1,22 @@
+{
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "auc": null,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.25384438037872314,
+  "num_test_samples": 20,
+  "best_epoch": 100,
+  "best_val_loss": 0.20024320483207703,
+  "total_params": 4204594,
+  "training_time_min": 1.9547890663146972,
+  "model_name": "MobileNetV3Large",
+  "model_size_mb": 16.13268280029297,
+  "flops": 233561016.0,
+  "flops_M": 233.561016,
+  "latency_gpu_ms": 4.775810241699219,
+  "latency_gpu_std_ms": 0.03525548986320003,
+  "latency_cpu_ms": 120.57821750640869,
+  "latency_cpu_std_ms": 32.1114801329522
+}

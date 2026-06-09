@@ -1,19 +1,41 @@
 """
-Benchmark two ONNX palm-vein classifiers on Raspberry Pi.
+Benchmark two ONNX palm-vein classifiers.
 
-Compares:
-- accuracy on the shared test split from split_info.json
-- per-image latency on CPUExecutionProvider
-- model file size
+Flexible: supports comparing models with different numbers of output classes
+(e.g. 834-class vs 2-class) on the same image set. Each model uses its own
+subject-to-label mapping. Supports flat and multi-distance nested data dirs.
 
-Usage:
-  python3 benchmark_compare_onnx_pi.py
+--- Usage examples ---
 
+# 1. Default: NAS-C4 (2-class) vs MobileNetV3 baseline (2-class), local dataset
   python3 benchmark_compare_onnx_pi.py \
-      --data-dir /home/pi/palm-vein/preprocessed_results \
-      --split-path /home/pi/palm-vein/split_info.json \
-      --model-a /home/pi/palm-vein/MobileNetV3Large/mobilenetv3_benchmark.onnx \
-      --model-b /home/pi/palm-vein/run5_efficientNetV2M_t10_a0.5_e500/model_benchmark.onnx
+      --save-path benchmark_compare_onnx_pi_results.json
+
+# 2. 834-class MobileNetV3 vs 2-class NAS-C4 on private 2-class test set
+#    The 834-class model's subjects 835/836 map to their SCUT class indices
+  python3 benchmark_compare_onnx_pi.py \
+      --model-a MobileNetV3Large/mobilenetv3_benchmark.onnx \
+      --label-a "MobileNetV3L-834cls" \
+      --subject-map-a 835:834 836:835 \
+      --model-b nas_results/retrain_mobile_v2_C4/model_benchmark.onnx \
+      --label-b "NAS-DARTS-C4" \
+      --save-path benchmark_compare_onnx_pi_results.json
+
+# 3. Latency-only (no accuracy), e.g. when subjects not in 834-class training set
+  python3 benchmark_compare_onnx_pi.py \
+      --model-a MobileNetV3Large/mobilenetv3_benchmark.onnx \
+      --label-a "MobileNetV3L-834cls" \
+      --skip-accuracy-a \
+      --save-path benchmark_compare_onnx_pi_results.json
+
+# 4. Pi 5 (copy dataset_multi_distance ke Pi 5, struktur nested tetap didukung)
+  python3 benchmark_compare_onnx_pi.py \
+      --data-dir /home/pi/NAS-DARTS/dataset_multi_distance \
+      --split-path /home/pi/NAS-DARTS/nas_results/retrain_mobile_v2_C4/split_info_converted.json \
+      --model-a /home/pi/NAS-DARTS/nas_results/retrain_mobile_v2_C4/model_benchmark.onnx \
+      --model-b /home/pi/NAS-DARTS/nas_results/baseline_mobilenetv3/mobilenetv3_benchmark.onnx \
+      --threads 4 \
+      --save-path /home/pi/NAS-DARTS/benchmark_compare_onnx_pi_results.json
 """
 
 from __future__ import annotations
@@ -35,13 +57,15 @@ except Exception as exc:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "preprocessed_results"
-DEFAULT_SPLIT_PATH = PROJECT_ROOT / "split_info.json"
-DEFAULT_MODEL_A = PROJECT_ROOT / "MobileNetV3Large" / "mobilenetv3_benchmark.onnx"
+DEFAULT_DATA_DIR = PROJECT_ROOT / "dataset_multi_distance"
+DEFAULT_SPLIT_PATH = (
+    PROJECT_ROOT / "nas_results" / "retrain_mobile_v2_C4" / "split_info_converted.json"
+)
+DEFAULT_MODEL_A = (
+    PROJECT_ROOT / "nas_results" / "retrain_mobile_v2_C4" / "model_benchmark.onnx"
+)
 DEFAULT_MODEL_B = (
-    PROJECT_ROOT
-    / "run5_efficientNetV2M_t10_a0.5_e500"
-    / "model_benchmark.onnx"
+    PROJECT_ROOT / "nas_results" / "baseline_mobilenetv3" / "mobilenetv3_benchmark.onnx"
 )
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(3, 1, 1)
@@ -51,22 +75,40 @@ IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(3, 1, 1
 @dataclass
 class Sample:
     path: Path
-    label: int
+    subject_id: str
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compare two ONNX classifiers on Raspberry Pi")
+    parser = argparse.ArgumentParser(description="Compare two ONNX classifiers")
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
     parser.add_argument("--split-path", type=Path, default=DEFAULT_SPLIT_PATH)
     parser.add_argument("--model-a", type=Path, default=DEFAULT_MODEL_A)
     parser.add_argument("--model-b", type=Path, default=DEFAULT_MODEL_B)
-    parser.add_argument("--label-a", type=str, default="MobileNetV3Large")
-    parser.add_argument("--label-b", type=str, default="KD-EfficientNetV2M")
+    parser.add_argument("--label-a", type=str, default="NAS-DARTS-C4")
+    parser.add_argument("--label-b", type=str, default="MobileNetV3Large-baseline")
+    parser.add_argument(
+        "--subject-map-a", nargs="+", default=None, metavar="SUBJ:IDX",
+        help="Per-model subject→label mapping for model-a, e.g. 835:0 836:1. "
+             "Default: auto-infer from split (sorted order).",
+    )
+    parser.add_argument(
+        "--subject-map-b", nargs="+", default=None, metavar="SUBJ:IDX",
+        help="Same as --subject-map-a but for model-b.",
+    )
+    parser.add_argument(
+        "--skip-accuracy-a", action="store_true",
+        help="Skip accuracy evaluation for model-a (latency-only).",
+    )
+    parser.add_argument(
+        "--skip-accuracy-b", action="store_true",
+        help="Skip accuracy evaluation for model-b (latency-only).",
+    )
     parser.add_argument("--input-size", type=int, default=224)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--max-samples", type=int, default=0, help="0 = use full test split")
-    parser.add_argument("--save-path", type=Path, default=PROJECT_ROOT / "benchmark_compare_onnx_pi_results.json")
+    parser.add_argument("--save-path", type=Path,
+                        default=PROJECT_ROOT / "benchmark_compare_onnx_pi_results.json")
     return parser.parse_args()
 
 
@@ -81,13 +123,35 @@ def build_label_map(subjects: list[str]) -> dict[str, int]:
     return {subject: idx for idx, subject in enumerate(ordered)}
 
 
+def parse_subject_map(pairs: list[str] | None) -> dict[str, int] | None:
+    """Parse ['835:0', '836:1'] → {'835': 0, '836': 1}, or None if not provided."""
+    if pairs is None:
+        return None
+    result: dict[str, int] = {}
+    for pair in pairs:
+        subject, idx = pair.split(":")
+        result[subject.strip()] = int(idx.strip())
+    return result
+
+
 def build_test_samples(data_dir: Path, split: dict[str, Any], max_samples: int) -> list[Sample]:
-    label_map = build_label_map(split["subjects"])
     samples: list[Sample] = []
+    missing: list[str] = []
+
     for subject_id, filename in split["test"]:
-        image_path = data_dir / str(subject_id) / filename
-        if image_path.exists():
-            samples.append(Sample(path=image_path, label=label_map[str(subject_id)]))
+        flat_path = data_dir / str(subject_id) / filename
+        if flat_path.exists():
+            samples.append(Sample(path=flat_path, subject_id=str(subject_id)))
+        else:
+            subject_dir = data_dir / str(subject_id)
+            found = list(subject_dir.rglob(filename)) if subject_dir.exists() else []
+            if found:
+                samples.append(Sample(path=found[0], subject_id=str(subject_id)))
+            else:
+                missing.append(f"{subject_id}/{filename}")
+
+    if missing:
+        print(f"  [warn] {len(missing)} test files not found (skipped)")
     if not samples:
         raise FileNotFoundError(f"No test samples found under {data_dir}")
     if max_samples > 0:
@@ -120,6 +184,8 @@ def benchmark_model(
     input_size: int,
     threads: int,
     warmup: int,
+    label_map: dict[str, int] | None = None,
+    skip_accuracy: bool = False,
 ) -> dict[str, Any]:
     session = create_session(model_path, threads)
     input_name = session.get_inputs()[0].name
@@ -132,6 +198,7 @@ def benchmark_model(
 
     latencies_ms: list[float] = []
     correct = 0
+    evaluated = 0
 
     for sample, array in zip(samples, cached_inputs):
         start = time.perf_counter()
@@ -139,17 +206,21 @@ def benchmark_model(
         end = time.perf_counter()
         latencies_ms.append((end - start) * 1000.0)
 
-        logits = np.asarray(outputs[0], dtype=np.float32)
-        pred = int(np.argmax(logits[0]))
-        if pred == sample.label:
-            correct += 1
+        if not skip_accuracy and label_map is not None and sample.subject_id in label_map:
+            logits = np.asarray(outputs[0], dtype=np.float32)
+            pred = int(np.argmax(logits[0]))
+            if pred == label_map[sample.subject_id]:
+                correct += 1
+            evaluated += 1
 
     latency = np.asarray(latencies_ms, dtype=np.float64)
+    accuracy = (correct / evaluated) if evaluated > 0 else None
     return {
         "model_path": str(model_path),
         "num_samples": len(samples),
-        "accuracy": correct / len(samples),
-        "correct": correct,
+        "accuracy": accuracy,
+        "correct": correct if evaluated > 0 else None,
+        "accuracy_evaluated": evaluated,
         "file_size_mb": model_path.stat().st_size / 1e6,
         "latency_mean_ms": float(latency.mean()),
         "latency_median_ms": float(np.median(latency)),
@@ -162,7 +233,10 @@ def benchmark_model(
 def print_result(label: str, result: dict[str, Any]) -> None:
     print(f"\n{label}")
     print(f"  model     : {result['model_path']}")
-    print(f"  accuracy  : {result['accuracy'] * 100:.2f}% ({result['correct']}/{result['num_samples']})")
+    if result["accuracy"] is not None:
+        print(f"  accuracy  : {result['accuracy'] * 100:.2f}% ({result['correct']}/{result['accuracy_evaluated']})")
+    else:
+        print("  accuracy  : N/A (skipped or label map not provided)")
     print(f"  size      : {result['file_size_mb']:.3f} MB")
     print(
         "  latency   : "
@@ -177,20 +251,37 @@ def main() -> None:
     split = load_split(args.split_path)
     samples = build_test_samples(args.data_dir, split, args.max_samples)
 
-    print("Benchmark ONNX on Raspberry Pi")
+    # Default label map: sorted subjects → 0, 1, ... (from split)
+    default_label_map = build_label_map(split["subjects"])
+    label_map_a = parse_subject_map(args.subject_map_a) or default_label_map
+    label_map_b = parse_subject_map(args.subject_map_b) or default_label_map
+
+    print("Benchmark ONNX")
     print(f"  data dir   : {args.data_dir}")
     print(f"  split path : {args.split_path}")
     print(f"  test imgs  : {len(samples)}")
     print(f"  threads    : {args.threads}")
+    print(f"  label map A: {label_map_a}" + (" [skip accuracy]" if args.skip_accuracy_a else ""))
+    print(f"  label map B: {label_map_b}" + (" [skip accuracy]" if args.skip_accuracy_b else ""))
 
-    result_a = benchmark_model(args.model_a, samples, args.input_size, args.threads, args.warmup)
-    result_b = benchmark_model(args.model_b, samples, args.input_size, args.threads, args.warmup)
+    result_a = benchmark_model(
+        args.model_a, samples, args.input_size, args.threads, args.warmup,
+        label_map=label_map_a, skip_accuracy=args.skip_accuracy_a,
+    )
+    result_b = benchmark_model(
+        args.model_b, samples, args.input_size, args.threads, args.warmup,
+        label_map=label_map_b, skip_accuracy=args.skip_accuracy_b,
+    )
 
     print_result(args.label_a, result_a)
     print_result(args.label_b, result_b)
 
     faster = args.label_a if result_a["latency_mean_ms"] < result_b["latency_mean_ms"] else args.label_b
-    more_accurate = args.label_a if result_a["accuracy"] > result_b["accuracy"] else args.label_b
+    acc_a, acc_b = result_a["accuracy"], result_b["accuracy"]
+    more_accurate = (
+        args.label_a if (acc_a or 0) > (acc_b or 0) else args.label_b
+        if acc_a is not None or acc_b is not None else "N/A"
+    )
 
     summary = {
         "data_dir": str(args.data_dir),
@@ -209,7 +300,10 @@ def main() -> None:
                 if result_a["latency_mean_ms"] < result_b["latency_mean_ms"]
                 else result_a["latency_mean_ms"] / result_b["latency_mean_ms"]
             ),
-            "accuracy_gap_pct_points": abs(result_a["accuracy"] - result_b["accuracy"]) * 100.0,
+            "accuracy_gap_pct_points": (
+                abs((acc_a or 0) - (acc_b or 0)) * 100.0
+                if acc_a is not None and acc_b is not None else None
+            ),
         },
     }
 
