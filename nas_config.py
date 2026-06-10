@@ -9,7 +9,7 @@ from pathlib import Path
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR     = PROJECT_ROOT / "preprocessed_results"
 TEACHER_DIR  = PROJECT_ROOT / "Teacher"
 SPLIT_PATH   = Path(__file__).resolve().parent / "split_info.json"

@@ -67,25 +67,45 @@ def main():
     with open(args.genotype) as f:
         genotype = dict_to_genotype(json.load(f))
 
-    # Build model
+    # Build model WITH auxiliary head to get accurate param count
+    model_with_aux = EvalNetwork(
+        genotype=genotype,
+        C_init=C_init,
+        num_cells=args.num_cells,
+        num_classes=NUM_CLASSES,
+        auxiliary=True,   # include aux head for correct param count
+        dropout=RETRAIN_CFG["dropout"],
+    ).to(device)
+
+    # Load weights into aux model for param counting
+    state_dict = torch.load(args.model_path, map_location=device)
+    model_with_aux.load_state_dict(state_dict, strict=False)
+    total_params = count_parameters(model_with_aux)
+
+    # Prefer param count from config.json if available (most reliable)
+    if config_path.exists():
+        with open(config_path) as f:
+            _cfg = json.load(f)
+        config_params = _cfg.get("total_params", None)
+        if config_params:
+            total_params = config_params
+            print(f"Using total_params={total_params:,} from config.json")
+
+    # Build eval model WITHOUT aux head (aux only needed during training)
     model = EvalNetwork(
         genotype=genotype,
         C_init=C_init,
         num_cells=args.num_cells,
         num_classes=NUM_CLASSES,
-        auxiliary=False,  # no aux for eval
+        auxiliary=False,  # no aux for inference
         dropout=RETRAIN_CFG["dropout"],
     ).to(device)
 
-    # Load weights
-    state_dict = torch.load(args.model_path, map_location=device)
-    # Handle auxiliary head mismatch (trained with aux, eval without)
+    # Load weights, strip auxiliary head keys
     state_dict = {k: v for k, v in state_dict.items()
                   if not k.startswith("_auxiliary_head")}
     model.load_state_dict(state_dict, strict=False)
     model.eval()
-
-    total_params = count_parameters(model)
     print(f"\nModel: NAS-PDARTS (C_init={C_init}, cells={args.num_cells})")
     print(f"Parameters: {total_params:,}")
     print(param_breakdown(model))

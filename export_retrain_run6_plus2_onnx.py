@@ -64,10 +64,15 @@ def infer_subjects(cfg: dict[str, Any], args: argparse.Namespace) -> list[str]:
         return sorted([str(subject) for subject in args.subjects], key=int)
 
     split_path = resolve_repo_path(cfg.get("split_path"))
+    # Fallback to default split_info.json at project root
     if split_path is None or not split_path.exists():
-        raise FileNotFoundError(
-            "Could not infer subjects from retrain config. Pass --subjects explicitly."
-        )
+        default_split = PROJECT_ROOT / "split_info.json"
+        if default_split.exists():
+            split_path = default_split
+        else:
+            raise FileNotFoundError(
+                "Could not infer subjects from retrain config. Pass --subjects explicitly."
+            )
 
     split = load_json(split_path)
     return sorted([str(subject) for subject in split["subjects"]], key=int)

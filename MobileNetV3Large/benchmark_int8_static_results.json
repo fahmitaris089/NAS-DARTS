@@ -1,0 +1,13 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/MobileNetV3Large",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/MobileNetV3Large/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/MobileNetV3Large/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/preprocessed_results",
+  "num_calib": 200,
+  "threads": 4,
+  "fp32_size_mb": 21.0769,
+  "int8_size_mb": 5.5439,
+  "fp32_4t_ms": 11.3433,
+  "int8_4t_ms": 2.2844,
+  "speedup_x": 4.9656
+}

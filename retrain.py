@@ -31,6 +31,12 @@ import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    confusion_matrix, classification_report, roc_auc_score, roc_curve,
+)
+from scipy.optimize import brentq
+from scipy.interpolate import interp1d
 
 # Force UTF-8 output on Windows
 if hasattr(sys.stdout, "reconfigure"):
@@ -114,13 +120,6 @@ def validate(model, loader, criterion, device):
 @torch.no_grad()
 def evaluate_test(model, loader, device, num_classes):
     """Full test evaluation — same metrics as Teacher."""
-    from sklearn.metrics import (
-        accuracy_score, precision_score, recall_score, f1_score,
-        confusion_matrix, classification_report, roc_auc_score, roc_curve,
-    )
-    from scipy.optimize import brentq
-    from scipy.interpolate import interp1d
-
     model.eval()
     all_preds, all_labels, all_probs = [], [], []
     t_start = time.time()

@@ -145,15 +145,32 @@ def main():
     input_name = fp32_sess.get_inputs()[0].name
     reader = PalmVeinCalibrationReader(calib_images, input_name, args.input_size)
 
-    quantize_static(
-        model_input=str(fp32_path),
-        model_output=str(int8_path),
-        calibration_data_reader=reader,
-        quant_format=QuantFormat.QDQ,
-        activation_type=QuantType.QInt8,
-        weight_type=QuantType.QInt8,
-        per_channel=True,
-    )
+    # Try per-channel first (requires opset >= 13), fallback to per-tensor
+    try:
+        quantize_static(
+            model_input=str(fp32_path),
+            model_output=str(int8_path),
+            calibration_data_reader=reader,
+            quant_format=QuantFormat.QDQ,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            per_channel=True,
+        )
+    except ValueError as e:
+        if "opset" in str(e).lower():
+            print(f"  [warn] per-channel requires opset>=13, falling back to per-tensor")
+            reader2 = PalmVeinCalibrationReader(calib_images, input_name, args.input_size)
+            quantize_static(
+                model_input=str(fp32_path),
+                model_output=str(int8_path),
+                calibration_data_reader=reader2,
+                quant_format=QuantFormat.QDQ,
+                activation_type=QuantType.QInt8,
+                weight_type=QuantType.QInt8,
+                per_channel=False,
+            )
+        else:
+            raise
 
     fp32_size = fp32_path.stat().st_size / 1e6
     int8_size = int8_path.stat().st_size / 1e6

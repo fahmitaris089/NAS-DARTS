@@ -1,0 +1,13 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_mobile_v2_C6_834cls",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_mobile_v2_C6_834cls/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_mobile_v2_C6_834cls/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/preprocessed_results",
+  "num_calib": 200,
+  "threads": 4,
+  "fp32_size_mb": 0.9363,
+  "int8_size_mb": 0.7163,
+  "fp32_4t_ms": 16.3608,
+  "int8_4t_ms": 6.9936,
+  "speedup_x": 2.3394
+}
