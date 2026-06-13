@@ -85,6 +85,12 @@ class KDConfig:
     # ── Drop path selama KD ──────────────────────────────────────────────────
     drop_path_prob: float = 0.1     # lebih kecil dari retrain (0.2) karena sudah pretrained
 
+    # ── Label smoothing pada CE component dari KD loss ───────────────────────
+    # Catatan: KD soft labels sudah berfungsi sebagai regularizer, sehingga
+    # label_smoothing tambahan bisa menyebabkan over-regularization (double smoothing).
+    # Set 0.0 untuk menonaktifkan (recommended saat KD aktif).
+    label_smoothing: float = 0.1
+
     # ── Output ───────────────────────────────────────────────────────────────
     output_dir: str = str(_HERE / "kd_results")
     log_interval: int = 10          # print setiap N batch

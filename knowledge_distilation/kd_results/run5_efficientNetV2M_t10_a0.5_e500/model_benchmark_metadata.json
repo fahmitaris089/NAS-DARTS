@@ -1,0 +1,20 @@
+{
+  "exported_at": "2026-06-10T23:59:05.681779",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/run5_efficientNetV2M_t10_a0.5_e500",
+  "model_path": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/run5_efficientNetV2M_t10_a0.5_e500/best_model.pth",
+  "onnx_path": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/run5_efficientNetV2M_t10_a0.5_e500/model_benchmark.onnx",
+  "input_size": 224,
+  "opset": 13,
+  "num_classes": 834,
+  "c_init": 4,
+  "num_cells": 8,
+  "auxiliary": false,
+  "model_size_mb": 0.3856,
+  "backend": "onnxruntime",
+  "kd_config": {
+    "teacher_arch": "efficientnet_v2_m",
+    "temperature": 10.0,
+    "alpha": 0.5,
+    "epochs": 500
+  }
+}

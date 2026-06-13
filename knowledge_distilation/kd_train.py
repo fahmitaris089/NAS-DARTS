@@ -133,6 +133,9 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     parser.add_argument("--sgdr_T_mult",   type=int, default=cfg.sgdr_T_mult,
                         help="SGDR: multiplier panjang cycle (default: 2)")
     parser.add_argument("--drop_path",   type=float, default=cfg.drop_path_prob)
+    parser.add_argument("--label_smoothing", type=float, default=cfg.label_smoothing,
+                        help="Label smoothing pada CE component (default 0.1). "
+                             "Set 0.0 untuk menonaktifkan (recommended saat KD aktif).")
     parser.add_argument("--seed",        type=int,   default=cfg.seed)
     parser.add_argument("--no_amp",      action="store_true",
                         help="Disable Automatic Mixed Precision")
@@ -170,6 +173,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.sgdr_T0             = args.sgdr_T0
     cfg.sgdr_T_mult         = args.sgdr_T_mult
     cfg.drop_path_prob      = args.drop_path
+    cfg.label_smoothing     = args.label_smoothing
     cfg.seed                = args.seed
     if args.no_amp:
         cfg.amp = False
@@ -794,7 +798,7 @@ def main():
     criterion = HintonKDLoss(
         temperature     = cfg.temperature,
         alpha           = cfg.alpha,
-        label_smoothing = 0.1,
+        label_smoothing = cfg.label_smoothing,
     )
     logger.info(
         f"  Loss: HintonKD  T={cfg.temperature}  "
