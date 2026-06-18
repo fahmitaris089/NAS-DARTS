@@ -30,17 +30,33 @@ IMAGENET_STD  = [0.229, 0.224, 0.225]
 
 # ─── Search Space Primitives ─────────────────────────────────────────────────
 
-# ── Experiment 2: remove dil_conv + max_pool, add MBConv (stride-2 stem) ──
-# Original 8-op space (with dilated conv) is preserved as PRIMITIVES_FULL below.
+# ── Experiment 4 (UNIFIED): all operator families compete head-to-head ──
+# Rationale: previous experiments isolated operator families across separate
+# searches (Exp1=sep+dil, Exp2=sep, Exp3=mbconv), so DARTS never selected
+# mbconv vs sep_conv vs dil_conv in a single search. This unified 10-op space
+# lets all three families compete directly under one protocol, so the claim
+# "NAS prefers MBConv" can be tested fairly. Previous spaces preserved below.
 PRIMITIVES = [
     'none',           # zero output (prune this edge)
     'skip_connect',   # identity / factorized reduce
+    'sep_conv_3x3',   # separable conv 3×3
+    'sep_conv_5x5',   # separable conv 5×5
+    'dil_conv_3x3',   # dilated conv 3×3
+    'dil_conv_5x5',   # dilated conv 5×5
     'mbconv3_3x3',    # inverted residual expand=3 (lightweight MBConv)
     'mbconv6_3x3',    # inverted residual expand=6 (richer MBConv)
     'avg_pool_3x3',   # average pooling 3×3
-]  # 5 ops — sep_conv removed to prevent dominance over MBConv during search
+    'max_pool_3x3',   # max pooling 3×3
+]  # 10 ops — UNIFIED head-to-head search space
 
-# Original full search space (8 ops, used in run6)
+# ── Exp 3 space: MBConv-only (produced search_mobile_v2) ──
+PRIMITIVES_MBCONV = [
+    'none', 'skip_connect',
+    'mbconv3_3x3', 'mbconv6_3x3',
+    'avg_pool_3x3',
+]  # 5 ops
+
+# ── Exp 1 space: original DARTS 8-op (produced search/, dil_conv won) ──
 PRIMITIVES_FULL = [
     'none', 'skip_connect',
     'sep_conv_3x3', 'sep_conv_5x5',
@@ -58,12 +74,14 @@ TOP_K_EDGES       = 2     # edges kept per node when deriving genotype
 # Each stage: (num_cells, epochs, ops_to_keep)
 # Stage 1: shallow + all ops → Stage 2: deeper + prune → Stage 3: deepest + prune more
 
-# ── Experiment 2: full search (50 epochs/stage) with 7-op space + stride-2 stem ──
-# alpha_warmup=10 → 40 effective alpha-update epochs per stage (warmup resets per stage!)
+# ── Experiment 4 (UNIFIED): 10-op space, progressive prune 10→6→3 ──
+# 25 epochs/stage (matches Exp3 search_mobile_v2 protocol; alpha_warmup=10 →
+# 15 effective alpha-update epochs/stage). Halves search time vs 50 ep/stage.
+# NOTE: if Stage-1 alpha plots look unconverged, rerun with epochs=50.
 PDARTS_STAGES = [
-    {"cells": 5,  "epochs": 25, "num_ops": 5},   # all 5 ops
-    {"cells": 8,  "epochs": 25, "num_ops": 4},   # prune to 4
-    {"cells": 11, "epochs": 25, "num_ops": 3},   # prune to 3
+    {"cells": 5,  "epochs": 25, "num_ops": 10},  # all 10 ops compete
+    {"cells": 8,  "epochs": 25, "num_ops": 6},   # prune to 6 (keeps skip + ≥2 conv)
+    {"cells": 11, "epochs": 25, "num_ops": 3},   # prune to 3 → final genotype
 ]
 
 # Full-length stages for Experiment 2+
