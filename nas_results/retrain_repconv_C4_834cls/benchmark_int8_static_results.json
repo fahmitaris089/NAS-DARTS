@@ -1,0 +1,13 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_repconv_C4_834cls",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_repconv_C4_834cls/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_repconv_C4_834cls/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/preprocessed_results",
+  "num_calib": 200,
+  "threads": 4,
+  "fp32_size_mb": 0.5162,
+  "int8_size_mb": 0.3518,
+  "fp32_4t_ms": 3.3797,
+  "int8_4t_ms": 4.0376,
+  "speedup_x": 0.837
+}

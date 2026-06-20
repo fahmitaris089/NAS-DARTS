@@ -285,9 +285,20 @@ def main():
     parser.add_argument("--no_auxiliary", action="store_true")
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--num_workers", type=int, default=RETRAIN_CFG["num_workers"])
+    parser.add_argument("--stem_downsample", type=int, default=2, choices=[2, 4],
+                        help="Early downsampling: 2 (224->112, default) or 4 (224->56, adds maxpool). "
+                             "Use 4 to shrink feature maps so wide convs stay cheap on edge.")
+    parser.add_argument("--reduction_indices", type=str, default=None,
+                        help="Comma-separated cell indices to use as reduction cells, e.g. '1,3,5'. "
+                             "Default: [num_cells//3, 2*num_cells//3] (original 2-reduction layout).")
     args = parser.parse_args()
 
     use_auxiliary = args.auxiliary and not args.no_auxiliary
+
+    # Parse reduction_indices override (spatial-reduction experiment)
+    reduction_indices = None
+    if args.reduction_indices:
+        reduction_indices = [int(x) for x in args.reduction_indices.split(",") if x.strip() != ""]
 
     # Setup
     set_seed(args.seed)
@@ -327,6 +338,8 @@ def main():
             target_max=RETRAIN_CFG["target_params_max"],
             auxiliary=use_auxiliary,
             dropout=RETRAIN_CFG["dropout"],
+            reduction_indices=reduction_indices,
+            stem_downsample=args.stem_downsample,
         )
         if C_init is None:
             C_init = 24  # fallback
@@ -343,12 +356,15 @@ def main():
         num_classes=num_classes,
         auxiliary=use_auxiliary,
         dropout=RETRAIN_CFG["dropout"],
+        reduction_indices=reduction_indices,
+        stem_downsample=args.stem_downsample,
     ).to(device)
 
     total_params = count_parameters(model)
     logger.info(f"\nModel Architecture:")
     logger.info(f"  C_init     : {C_init}")
     logger.info(f"  Cells      : {args.num_cells}")
+    logger.info(f"  Reductions : {model.reduction_indices}  stem_downsample={args.stem_downsample}")
     logger.info(f"  Auxiliary   : {use_auxiliary}")
     logger.info(f"  Parameters : {total_params:,}")
     logger.info(param_breakdown(model))
@@ -488,6 +504,8 @@ def main():
             num_classes=num_classes,
             auxiliary=use_auxiliary,
             dropout=RETRAIN_CFG["dropout"],
+            reduction_indices=reduction_indices,
+            stem_downsample=args.stem_downsample,
         ).to(device)
         state_dict = torch.load(weights_path, map_location="cpu")
         eval_model.load_state_dict(state_dict)

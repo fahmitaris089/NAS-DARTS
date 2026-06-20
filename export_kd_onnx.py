@@ -166,14 +166,28 @@ def main() -> None:
 
     kd_cfg = load_json(kd_config_path)
 
-    # Load student config (retrain config.json) untuk dapat genotype + C_init aktual
-    student_config_path = PROJECT_ROOT / kd_cfg["student_config_path"]
-    if not student_config_path.exists():
-        raise FileNotFoundError(
-            f"Student config not found: {student_config_path}\n"
-            f"  (dari kd config: {kd_cfg['student_config_path']})"
+    # Load student config (retrain config.json) untuk dapat genotype + C_init aktual.
+    # Dua skenario:
+    #   1. KD dir  → config.json punya "student_config_path" menunjuk ke retrain config.
+    #   2. Retrain dir → config.json sudah memuat "genotype" langsung (self-contained).
+    if "student_config_path" in kd_cfg:
+        student_config_path = PROJECT_ROOT / kd_cfg["student_config_path"]
+        if not student_config_path.exists():
+            raise FileNotFoundError(
+                f"Student config not found: {student_config_path}\n"
+                f"  (dari kd config: {kd_cfg['student_config_path']})"
+            )
+        student_cfg = load_json(student_config_path)
+    elif "genotype" in kd_cfg:
+        # config.json ini sudah merupakan student/retrain config itu sendiri.
+        print("  [info] 'student_config_path' tidak ada — "
+              "menggunakan config.json ini langsung sebagai student config.")
+        student_cfg = kd_cfg
+    else:
+        raise KeyError(
+            "config.json tidak memuat 'student_config_path' maupun 'genotype'. "
+            "Tidak bisa merekonstruksi arsitektur model."
         )
-    student_cfg = load_json(student_config_path)
 
     print(f"\n  Loading model...")
     model = build_model(kd_cfg, student_cfg, model_path)
