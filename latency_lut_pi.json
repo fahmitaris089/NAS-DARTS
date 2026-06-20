@@ -1,0 +1,17 @@
+{
+  "device_note": "measured on target device; ms = median per config, mean over configs",
+  "threads": 4,
+  "iters": 100,
+  "cost": {
+    "none": 0.0195,
+    "skip_connect": 0.03499,
+    "sep_conv_3x3": 0.0681,
+    "sep_conv_5x5": 0.12297,
+    "dil_conv_3x3": 0.04201,
+    "dil_conv_5x5": 0.06124,
+    "mbconv3_3x3": 0.09106,
+    "mbconv6_3x3": 0.1719,
+    "avg_pool_3x3": 0.02469,
+    "max_pool_3x3": 0.02431
+  }
+}

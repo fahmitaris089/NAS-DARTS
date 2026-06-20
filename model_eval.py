@@ -140,8 +140,7 @@ class EvalNetwork(nn.Module):
     """
 
     def __init__(self, genotype, C_init, num_cells, num_classes,
-                 auxiliary=False, dropout=0.3,
-                 reduction_indices=None, stem_downsample=2):
+                 auxiliary=False, dropout=0.3):
         """
         Args:
             genotype:    Genotype namedtuple
@@ -150,14 +149,6 @@ class EvalNetwork(nn.Module):
             num_classes: output classes (834)
             auxiliary:   use auxiliary head at 2/3 depth
             dropout:     classifier dropout rate
-            reduction_indices: cell indices that are reduction cells. Default
-                         reproduces the original 2-reduction layout
-                         [num_cells//3, 2*num_cells//3] → downsample 8× → 28×28.
-                         Pass e.g. [1,3,5] (with stem_downsample=4) to reach a
-                         7×7 feature map like MobileNet, so wide-channel convs
-                         run on far fewer spatial positions (cheaper on edge).
-            stem_downsample: 2 (conv stride2, 224→112; original) or 4 (adds a
-                         maxpool, 224→56) for more aggressive early downsampling.
         """
         super().__init__()
         self.num_cells = num_cells
@@ -165,21 +156,13 @@ class EvalNetwork(nn.Module):
         self._auxiliary_head = None
         self.drop_path_prob = 0.0
 
-        if reduction_indices is None:
-            reduction_indices = [num_cells // 3, 2 * num_cells // 3]
-        self.reduction_indices = list(reduction_indices)
-        self.stem_downsample = stem_downsample
-
         C_curr = C_init * 3  # stem output
 
-        # Stem — stem_downsample=2 (224→112, original); =4 adds maxpool (224→56)
-        stem_layers = [
-            nn.Conv2d(3, C_curr, 3, stride=2, padding=1, bias=False),
+        # Stem
+        self.stem = nn.Sequential(
+            nn.Conv2d(3, C_curr, 3, stride=2, padding=1, bias=False),  # 224→112
             nn.BatchNorm2d(C_curr),
-        ]
-        if stem_downsample >= 4:
-            stem_layers.append(nn.MaxPool2d(3, stride=2, padding=1))
-        self.stem = nn.Sequential(*stem_layers)
+        )
 
         # Build cells
         C_pp, C_p = C_curr, C_curr
@@ -187,12 +170,14 @@ class EvalNetwork(nn.Module):
         reduction_prev = False
 
         for i in range(num_cells):
-            reduction = (i in self.reduction_indices)
+            reduction = (i in [num_cells // 3, 2 * num_cells // 3])
 
-            # Channel width doubles at every reduction cell. For the default
-            # 2-reduction layout this reproduces C_init → 2C → 4C exactly.
-            n_red = sum(1 for r in self.reduction_indices if r <= i)
-            C = C_init * (2 ** n_red)
+            if i < num_cells // 3:
+                C = C_init
+            elif i < 2 * num_cells // 3:
+                C = C_init * 2
+            else:
+                C = C_init * 4
 
             if reduction:
                 cell_ops = genotype.reduce
@@ -206,9 +191,8 @@ class EvalNetwork(nn.Module):
             C_pp = C_p
             C_p = C * NUM_NODES  # concat
 
-            # Auxiliary head after the last reduction cell (≈2/3 depth in the
-            # default layout; generalises to custom reduction_indices).
-            if auxiliary and i == self.reduction_indices[-1]:
+            # Auxiliary head at 2/3 depth
+            if auxiliary and i == 2 * num_cells // 3:
                 self._auxiliary_head = AuxiliaryHead(C_p, num_classes)
 
         # Classifier
@@ -238,7 +222,7 @@ class EvalNetwork(nn.Module):
 
         for i, cell in enumerate(self.cells):
             s0, s1 = s1, cell(s0, s1)
-            if self.auxiliary and self.training and i == self.reduction_indices[-1]:
+            if self.auxiliary and self.training and i == 2 * self.num_cells // 3:
                 if self._auxiliary_head is not None:
                     logits_aux = self._auxiliary_head(s1)
 
@@ -268,8 +252,7 @@ def count_parameters(model, trainable_only=True):
 
 def find_optimal_C_init(genotype, num_cells, num_classes,
                         target_min=250_000, target_max=400_000,
-                        auxiliary=False, dropout=0.3,
-                        reduction_indices=None, stem_downsample=2):
+                        auxiliary=False, dropout=0.3):
     """
     Binary search for C_init that puts param count in target range.
 
@@ -280,9 +263,7 @@ def find_optimal_C_init(genotype, num_cells, num_classes,
 
     for C in range(8, 64, 2):
         model = EvalNetwork(genotype, C, num_cells, num_classes,
-                            auxiliary=auxiliary, dropout=dropout,
-                            reduction_indices=reduction_indices,
-                            stem_downsample=stem_downsample)
+                            auxiliary=auxiliary, dropout=dropout)
         n_params = count_parameters(model)
 
         if target_min <= n_params <= target_max:
@@ -298,9 +279,7 @@ def find_optimal_C_init(genotype, num_cells, num_classes,
         # Find closest below target_max
         for C in range(8, 64, 2):
             model = EvalNetwork(genotype, C, num_cells, num_classes,
-                                auxiliary=auxiliary, dropout=dropout,
-                                reduction_indices=reduction_indices,
-                                stem_downsample=stem_downsample)
+                                auxiliary=auxiliary, dropout=dropout)
             n_params = count_parameters(model)
             if n_params <= target_max:
                 best = C

@@ -41,6 +41,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from nas_config import (
     PRIMITIVES, PDARTS_STAGES, SEARCH_CFG, SEARCH_DIR, NUM_CLASSES,
     INPUT_SIZE, SEARCH_INPUT_SIZE, SEED, NUM_NODES, NUM_INPUT_NODES,
+    OP_COST_PROXY,
 )
 from model_search import SearchNetwork
 from architect import Architect
@@ -70,6 +71,7 @@ def search_epoch(model, train_loader, val_loader, criterion,
     model.train()
     loss_w = AverageMeter("w_loss")
     loss_a = AverageMeter("a_loss")
+    loss_pen = AverageMeter("a_pen")
     top1 = AverageMeter("acc")
     num_batches = len(train_loader)
 
@@ -90,8 +92,10 @@ def search_epoch(model, train_loader, val_loader, criterion,
             input_val = input_val.to(device, non_blocking=True)
             target_val = target_val.to(device, non_blocking=True)
 
-            a_loss = architect.step(input_val, target_val, criterion, skip_dropout_mask)
+            a_loss, _a_ce, a_pen = architect.step(
+                input_val, target_val, criterion, skip_dropout_mask)
             loss_a.update(a_loss, input_val.size(0))
+            loss_pen.update(a_pen, input_val.size(0))
 
         # ── Step 2: Update network weights (w) ──
         w_optimizer.zero_grad()
@@ -115,7 +119,7 @@ def search_epoch(model, train_loader, val_loader, criterion,
         if step % 10 == 0 or step == num_batches - 1:
             logger.info(
                 f"    batch {step+1:>4}/{num_batches} │ "
-                f"w={loss_w.avg:.4f} a={loss_a.avg:.4f} acc={top1.avg:.4f}"
+                f"w={loss_w.avg:.4f} a={loss_a.avg:.4f} pen={loss_pen.avg:.4f} acc={top1.avg:.4f}"
             )
 
     return loss_w.avg, loss_a.avg, top1.avg
@@ -183,7 +187,7 @@ def prune_operations(model, primitives, num_ops_to_keep, logger=None):
     STRUCTURAL_OPS = {'skip_connect'}
     # Convolution ops — guarantee at least MIN_CONV survive pruning
     CONV_OPS = {'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5',
-                'mbconv3_3x3', 'mbconv6_3x3'}
+                'mbconv3_3x3', 'mbconv6_3x3', 'rep_conv_3x3', 'rep_conv_5x5'}
     MIN_CONV = 2  # ensure genotype diversity (≥2 different conv ops)
 
     kept = []
@@ -267,6 +271,13 @@ def main():
     parser.add_argument("--num_workers", type=int, default=SEARCH_CFG["num_workers"])
     parser.add_argument("--search_input_size", type=int, default=SEARCH_INPUT_SIZE,
                         help="Input image size during search (default: 96, smaller=faster)")
+    parser.add_argument("--oplat_lambda", type=float, default=0.0,
+                        help="Weight for the operator-latency penalty on alpha "
+                             "(0 = disabled, pure DARTS). Try 0.01-0.2.")
+    parser.add_argument("--latency_lut", type=str, default=None,
+                        help="Path to a JSON latency LUT {op_name: latency_ms} measured "
+                             "on the target device (Raspberry Pi). If omitted, the op-count "
+                             "proxy (OP_COST_PROXY) is used as the cost.")
     args = parser.parse_args()
 
     # Setup
@@ -280,6 +291,22 @@ def main():
     logger.info(f"Device: {device}")
     logger.info(f"Seed: {args.seed}")
     logger.info(f"Search input size: {args.search_input_size}")
+
+    # ─── Operator-latency cost table (hardware-aware penalty) ──────────────
+    op_cost = dict(OP_COST_PROXY)
+    cost_source = "op-count proxy"
+    if args.oplat_lambda > 0.0 and args.latency_lut:
+        with open(args.latency_lut, "r", encoding="utf-8") as f:
+            lut = json.load(f)
+        # Accept either {op: ms} or {"cost": {op: ms}}
+        lut = lut.get("cost", lut)
+        op_cost = {k: float(v) for k, v in lut.items()}
+        cost_source = f"device LUT ({args.latency_lut})"
+    if args.oplat_lambda > 0.0:
+        logger.info(f"Latency penalty ENABLED: lambda={args.oplat_lambda}, cost source={cost_source}")
+        logger.info(f"  op_cost={ {k: round(op_cost.get(k, 0.0), 4) for k in PRIMITIVES} }")
+    else:
+        logger.info("Latency penalty DISABLED (pure DARTS, oplat_lambda=0)")
 
     # Data
     search_train_loader, search_val_loader, val_loader, test_loader, data_info = \
@@ -364,7 +391,13 @@ def main():
             w_optimizer, T_max=epochs, eta_min=SEARCH_CFG["w_lr_min"]
         )
 
-        architect = Architect(model, SEARCH_CFG)
+        architect = Architect(
+            model, SEARCH_CFG,
+            primitives=current_primitives,
+            op_cost=op_cost,
+            oplat_lambda=args.oplat_lambda,
+            device=device,
+        )
 
         # Alpha logging
         alpha_log_normal = []

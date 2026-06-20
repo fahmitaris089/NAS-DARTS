@@ -45,9 +45,31 @@ PRIMITIVES = [
     'dil_conv_5x5',   # dilated conv 5×5
     'mbconv3_3x3',    # inverted residual expand=3 (lightweight MBConv)
     'mbconv6_3x3',    # inverted residual expand=6 (richer MBConv)
+    'rep_conv_3x3',   # re-parameterizable conv 3×3 (fuses to 1 conv at inference)
+    'rep_conv_5x5',   # re-parameterizable conv 5×5 (fuses to 1 conv at inference)
     'avg_pool_3x3',   # average pooling 3×3
     'max_pool_3x3',   # max pooling 3×3
-]  # 10 ops — UNIFIED head-to-head search space
+]  # 12 ops — UNIFIED head-to-head search space (Exp5: + re-parameterizable convs)
+
+# ── Operator inference cost (Tier-1 proxy = number of conv kernels after fusion).
+# Used by the op-count latency penalty in search when --oplat_lambda > 0 and no
+# device LUT is supplied. Values are validated by Pi profiling: latency tracks
+# the number of conv-call operators, NOT FLOPs/params. RepConv fuses to 1 conv;
+# MBConv stays 3 (PW-DW-PW); SepConv/DilConv are depthwise-separable (~2).
+OP_COST_PROXY = {
+    'none':         0.0,
+    'skip_connect': 0.0,
+    'avg_pool_3x3': 1.0,
+    'max_pool_3x3': 1.0,
+    'rep_conv_3x3': 1.0,
+    'rep_conv_5x5': 1.0,
+    'dil_conv_3x3': 2.0,
+    'dil_conv_5x5': 2.0,
+    'sep_conv_3x3': 2.0,
+    'sep_conv_5x5': 2.0,
+    'mbconv3_3x3':  3.0,
+    'mbconv6_3x3':  3.0,
+}
 
 # ── Exp 3 space: MBConv-only (produced search_mobile_v2) ──
 PRIMITIVES_MBCONV = [
@@ -79,9 +101,9 @@ TOP_K_EDGES       = 2     # edges kept per node when deriving genotype
 # 15 effective alpha-update epochs/stage). Halves search time vs 50 ep/stage.
 # NOTE: if Stage-1 alpha plots look unconverged, rerun with epochs=50.
 PDARTS_STAGES = [
-    {"cells": 5,  "epochs": 25, "num_ops": 10},  # all 10 ops compete
-    {"cells": 8,  "epochs": 25, "num_ops": 6},   # prune to 6 (keeps skip + ≥2 conv)
-    {"cells": 11, "epochs": 25, "num_ops": 3},   # prune to 3 → final genotype
+    {"cells": 5,  "epochs": 25, "num_ops": 12},  # all 12 ops compete
+    {"cells": 8,  "epochs": 25, "num_ops": 7},   # prune to 7 (keeps skip + ≥2 conv)
+    {"cells": 11, "epochs": 25, "num_ops": 4},   # prune to 4 → final genotype
 ]
 
 # Full-length stages for Experiment 2+
