@@ -109,6 +109,13 @@ def build_model_bundle(args: argparse.Namespace) -> dict[str, Any]:
     if len(label_names) != len(subjects):
         raise ValueError("--subject-names must have the same length as --subjects.")
 
+    # Reconstruct stem/reduction settings from config (default-safe for old models)
+    _stem_ds = int(cfg.get("stem_downsample", 2))
+    _red_idx_raw = cfg.get("reduction_indices", None)
+    _red_idx = None
+    if _red_idx_raw:
+        _red_idx = [int(x) for x in str(_red_idx_raw).split(",") if str(x).strip() != ""]
+
     model = EvalNetwork(
         genotype=genotype,
         C_init=int(cfg.get("C_init", RETRAIN_CFG["C_init"])),
@@ -116,6 +123,8 @@ def build_model_bundle(args: argparse.Namespace) -> dict[str, Any]:
         num_classes=len(subjects),
         auxiliary=False,
         dropout=float(RETRAIN_CFG["dropout"]),
+        stem_downsample=_stem_ds,
+        reduction_indices=_red_idx,
     )
     state_dict = torch.load(model_path, map_location="cpu")
     state_dict = {

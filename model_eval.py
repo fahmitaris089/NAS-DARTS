@@ -140,49 +140,67 @@ class EvalNetwork(nn.Module):
     """
 
     def __init__(self, genotype, C_init, num_cells, num_classes,
-                 auxiliary=False, dropout=0.3):
+                 auxiliary=False, dropout=0.3,
+                 stem_downsample=2, reduction_indices=None):
         """
         Args:
-            genotype:    Genotype namedtuple
-            C_init:      initial channels (controls total params)
-            num_cells:   number of cells
-            num_classes: output classes (834)
-            auxiliary:   use auxiliary head at 2/3 depth
-            dropout:     classifier dropout rate
+            genotype:        Genotype namedtuple
+            C_init:          initial channels (controls total params)
+            num_cells:       number of cells
+            num_classes:     output classes (834)
+            auxiliary:       use auxiliary head at 2/3 depth
+            dropout:         classifier dropout rate
+            stem_downsample: spatial downsample factor at the stem (power of 2).
+                             2 = 224→112 (default, backward-compatible),
+                             4 = 224→56 (fewer pixels → lower latency).
+            reduction_indices: explicit list of cell indices to make reduction
+                             cells. None = default [num_cells//3, 2*num_cells//3].
         """
         super().__init__()
         self.num_cells = num_cells
         self.auxiliary = auxiliary
         self._auxiliary_head = None
         self.drop_path_prob = 0.0
+        self.stem_downsample = stem_downsample
+        self.reduction_indices = reduction_indices
 
         C_curr = C_init * 3  # stem output
 
-        # Stem
-        self.stem = nn.Sequential(
-            nn.Conv2d(3, C_curr, 3, stride=2, padding=1, bias=False),  # 224→112
-            nn.BatchNorm2d(C_curr),
-        )
+        # Stem: downsample by `stem_downsample` (power of 2) via stacked stride-2
+        # convs. For stem_downsample=2 this is a single conv (224→112), identical
+        # to the original stem. For 4: two stride-2 stages (224→112→56).
+        n_down = max(1, int(stem_downsample).bit_length() - 1)  # 2→1, 4→2, 8→3
+        stem_layers = []
+        c_in = 3
+        for k in range(n_down):
+            stem_layers.append(nn.Conv2d(c_in, C_curr, 3, stride=2, padding=1, bias=False))
+            stem_layers.append(nn.BatchNorm2d(C_curr))
+            if k < n_down - 1:
+                stem_layers.append(nn.ReLU(inplace=False))
+            c_in = C_curr
+        self.stem = nn.Sequential(*stem_layers)
 
-        # Build cells
+        # Reduction cell positions
+        if reduction_indices is None:
+            reduction_set = {num_cells // 3, 2 * num_cells // 3}
+        else:
+            reduction_set = set(int(x) for x in reduction_indices)
+
+        # Build cells. Channels double at each reduction cell (DARTS convention),
+        # generalised to arbitrary reduction positions via a running multiplier.
         C_pp, C_p = C_curr, C_curr
         self.cells = nn.ModuleList()
         reduction_prev = False
+        mult = 1
+        aux_pos = 2 * num_cells // 3
 
         for i in range(num_cells):
-            reduction = (i in [num_cells // 3, 2 * num_cells // 3])
-
-            if i < num_cells // 3:
-                C = C_init
-            elif i < 2 * num_cells // 3:
-                C = C_init * 2
-            else:
-                C = C_init * 4
-
+            reduction = (i in reduction_set)
             if reduction:
-                cell_ops = genotype.reduce
-            else:
-                cell_ops = genotype.normal
+                mult *= 2
+            C = C_init * mult
+
+            cell_ops = genotype.reduce if reduction else genotype.normal
 
             cell = EvalCell(cell_ops, C_pp, C_p, C, reduction, reduction_prev)
             self.cells.append(cell)
@@ -191,8 +209,8 @@ class EvalNetwork(nn.Module):
             C_pp = C_p
             C_p = C * NUM_NODES  # concat
 
-            # Auxiliary head at 2/3 depth
-            if auxiliary and i == 2 * num_cells // 3:
+            # Auxiliary head at ~2/3 depth
+            if auxiliary and i == aux_pos:
                 self._auxiliary_head = AuxiliaryHead(C_p, num_classes)
 
         # Classifier

@@ -272,6 +272,12 @@ def main():
                              f"{RETRAIN_CFG['target_params_min']//1000}k-"
                              f"{RETRAIN_CFG['target_params_max']//1000}k params)")
     parser.add_argument("--num_cells", type=int, default=RETRAIN_CFG["num_cells"])
+    parser.add_argument("--stem_downsample", type=int, default=2,
+                        help="Stem spatial downsample factor (power of 2). "
+                             "2=224->112 (default), 4=224->56 (lower latency).")
+    parser.add_argument("--reduction_indices", type=str, default=None,
+                        help="Comma-separated cell indices used as reduction cells, "
+                             "e.g. '2,5'. Default: [num_cells//3, 2*num_cells//3].")
     parser.add_argument("--epochs", type=int, default=RETRAIN_CFG["epochs"])
     parser.add_argument("--batch_size", type=int, default=RETRAIN_CFG["batch_size"])
     parser.add_argument("--lr", type=float, default=RETRAIN_CFG["lr"])
@@ -288,6 +294,11 @@ def main():
     args = parser.parse_args()
 
     use_auxiliary = args.auxiliary and not args.no_auxiliary
+
+    # Parse reduction indices ("2,5" -> [2, 5]); None keeps the default positions.
+    reduction_indices = None
+    if args.reduction_indices:
+        reduction_indices = [int(x) for x in str(args.reduction_indices).split(",") if x.strip() != ""]
 
     # Setup
     set_seed(args.seed)
@@ -343,6 +354,8 @@ def main():
         num_classes=num_classes,
         auxiliary=use_auxiliary,
         dropout=RETRAIN_CFG["dropout"],
+        stem_downsample=args.stem_downsample,
+        reduction_indices=reduction_indices,
     ).to(device)
 
     total_params = count_parameters(model)
@@ -488,6 +501,8 @@ def main():
             num_classes=num_classes,
             auxiliary=use_auxiliary,
             dropout=RETRAIN_CFG["dropout"],
+            stem_downsample=args.stem_downsample,
+            reduction_indices=reduction_indices,
         ).to(device)
         state_dict = torch.load(weights_path, map_location="cpu")
         eval_model.load_state_dict(state_dict)

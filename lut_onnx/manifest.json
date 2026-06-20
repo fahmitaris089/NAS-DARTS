@@ -520,6 +520,136 @@
     ]
   },
   {
+    "file": "rep_conv_3x3__C8_H56_s1.onnx",
+    "op": "rep_conv_3x3",
+    "C": 8,
+    "H": 56,
+    "stride": 1,
+    "shape": [
+      1,
+      8,
+      56,
+      56
+    ]
+  },
+  {
+    "file": "rep_conv_3x3__C16_H28_s1.onnx",
+    "op": "rep_conv_3x3",
+    "C": 16,
+    "H": 28,
+    "stride": 1,
+    "shape": [
+      1,
+      16,
+      28,
+      28
+    ]
+  },
+  {
+    "file": "rep_conv_3x3__C32_H14_s1.onnx",
+    "op": "rep_conv_3x3",
+    "C": 32,
+    "H": 14,
+    "stride": 1,
+    "shape": [
+      1,
+      32,
+      14,
+      14
+    ]
+  },
+  {
+    "file": "rep_conv_3x3__C16_H28_s2.onnx",
+    "op": "rep_conv_3x3",
+    "C": 16,
+    "H": 28,
+    "stride": 2,
+    "shape": [
+      1,
+      16,
+      28,
+      28
+    ]
+  },
+  {
+    "file": "rep_conv_3x3__C32_H14_s2.onnx",
+    "op": "rep_conv_3x3",
+    "C": 32,
+    "H": 14,
+    "stride": 2,
+    "shape": [
+      1,
+      32,
+      14,
+      14
+    ]
+  },
+  {
+    "file": "rep_conv_5x5__C8_H56_s1.onnx",
+    "op": "rep_conv_5x5",
+    "C": 8,
+    "H": 56,
+    "stride": 1,
+    "shape": [
+      1,
+      8,
+      56,
+      56
+    ]
+  },
+  {
+    "file": "rep_conv_5x5__C16_H28_s1.onnx",
+    "op": "rep_conv_5x5",
+    "C": 16,
+    "H": 28,
+    "stride": 1,
+    "shape": [
+      1,
+      16,
+      28,
+      28
+    ]
+  },
+  {
+    "file": "rep_conv_5x5__C32_H14_s1.onnx",
+    "op": "rep_conv_5x5",
+    "C": 32,
+    "H": 14,
+    "stride": 1,
+    "shape": [
+      1,
+      32,
+      14,
+      14
+    ]
+  },
+  {
+    "file": "rep_conv_5x5__C16_H28_s2.onnx",
+    "op": "rep_conv_5x5",
+    "C": 16,
+    "H": 28,
+    "stride": 2,
+    "shape": [
+      1,
+      16,
+      28,
+      28
+    ]
+  },
+  {
+    "file": "rep_conv_5x5__C32_H14_s2.onnx",
+    "op": "rep_conv_5x5",
+    "C": 32,
+    "H": 14,
+    "stride": 2,
+    "shape": [
+      1,
+      32,
+      14,
+      14
+    ]
+  },
+  {
     "file": "avg_pool_3x3__C8_H56_s1.onnx",
     "op": "avg_pool_3x3",
     "C": 8,
