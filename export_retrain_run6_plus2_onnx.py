@@ -125,6 +125,13 @@ def build_model_bundle(args: argparse.Namespace) -> dict[str, Any]:
     model.load_state_dict(state_dict, strict=False)
     model.eval()
 
+    # Re-parameterization: collapse any RepConvBN multi-branch blocks into single
+    # convs for deployment. No-op for MBConv/SepConv models (returns n=0).
+    from operations import fuse_reparam_model
+    _, n_fused = fuse_reparam_model(model)
+    if n_fused:
+        print(f"[export] Fused {n_fused} RepConvBN block(s) into single convs for inference.")
+
     return {
         "model": model,
         "config": cfg,

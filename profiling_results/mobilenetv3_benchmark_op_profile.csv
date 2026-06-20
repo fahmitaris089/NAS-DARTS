@@ -1,0 +1,13 @@
+op_type,calls_per_infer,calls_total,pct_time,ms_per_infer,avg_per_call_us,total_ms
+FusedConv,44.40,4440,45.86,9.3450,210.47,934.500
+Conv,30.00,3000,32.17,6.5556,218.52,655.557
+Mul,34.80,3480,10.13,2.0644,59.32,206.436
+Gemm,2.40,240,5.68,1.1584,482.67,115.840
+HardSigmoid,25.20,2520,4.61,0.9390,37.26,93.902
+GlobalAveragePool,10.80,1080,1.49,0.3038,28.13,30.384
+Flatten,1.20,120,0.06,0.0123,10.21,1.225
+
+end_to_end_mean_ms,15.4071
+end_to_end_std_ms,2.2605
+end_to_end_p50_ms,14.7452
+end_to_end_p90_ms,15.9650
