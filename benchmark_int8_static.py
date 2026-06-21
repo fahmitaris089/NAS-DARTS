@@ -60,6 +60,31 @@ def collect_calibration_images(calib_dir: Path, limit: int) -> List[Path]:
     return images[: min(limit, len(images))]
 
 
+def ensure_min_opset(fp32_path: Path, min_opset: int = 13) -> Path:
+    """Guarantee the ONNX uses opset >= min_opset so per-channel quant is valid.
+
+    A model exported at opset < 13 silently disables per-channel weight
+    quantization in onnxruntime, which catastrophically degrades models with
+    wide activation ranges (e.g. MobileNetV3 h-swish + SE). We upgrade in place
+    via onnx.version_converter and write an `*_op{min_opset}.onnx` sibling so the
+    original artifact is preserved.
+    """
+    import onnx
+
+    model = onnx.load(str(fp32_path))
+    current = max((op.version for op in model.opset_import if op.domain in ("", "ai.onnx")), default=0)
+    if current >= min_opset:
+        return fp32_path
+
+    print(f"  [opset] {fp32_path.name} is opset {current} < {min_opset}; upgrading for per-channel quant")
+    upgraded = onnx.version_converter.convert_version(model, min_opset)
+    onnx.checker.check_model(upgraded)
+    up_path = fp32_path.with_name(fp32_path.stem + f"_op{min_opset}.onnx")
+    onnx.save(upgraded, str(up_path))
+    print(f"  [opset] upgraded model written: {up_path.name}")
+    return up_path
+
+
 class PalmVeinCalibrationReader(CalibrationDataReader):
     def __init__(self, image_paths: List[Path], input_name: str, input_size: int):
         self.input_name = input_name
@@ -121,11 +146,16 @@ def main():
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--runs", type=int, default=100)
+    parser.add_argument(
+        "--onnx_name",
+        default="model_benchmark.onnx",
+        help="FP32 ONNX filename inside --model_dir (e.g. mobilenetv3_benchmark.onnx)",
+    )
     args = parser.parse_args()
 
     model_dir = ROOT / args.model_dir
-    fp32_path = model_dir / "model_benchmark.onnx"
-    int8_path = model_dir / "model_benchmark_int8_static.onnx"
+    fp32_path = model_dir / args.onnx_name
+    int8_path = fp32_path.with_name(fp32_path.stem + "_int8_static.onnx")
     calib_dir = ROOT / args.calib_dir
 
     if not fp32_path.exists():
@@ -141,36 +171,48 @@ def main():
     calib_images = collect_calibration_images(calib_dir, args.num_calib)
     print(f"  Calibration img: {len(calib_images)} bmp")
 
+    # Guarantee opset >= 13 BEFORE quantizing. Without this, a low-opset model
+    # silently disables per-channel weight quantization, producing an unfair
+    # (degraded) INT8 baseline. We upgrade rather than fall back to per-tensor.
+    quant_input_path = ensure_min_opset(fp32_path, min_opset=13)
+
+    # ORT-recommended pre-processing (symbolic shape inference + graph cleanup).
+    # This is important for complex graphs (e.g. MobileNetV3 SE/h-swish): it
+    # avoids degenerate bias scales and improves PTQ accuracy. Skips gracefully
+    # if the helper is unavailable in the installed onnxruntime version.
+    try:
+        from onnxruntime.quantization.shape_inference import quant_pre_process
+
+        pre_path = quant_input_path.with_name(quant_input_path.stem + "_pre.onnx")
+        quant_pre_process(str(quant_input_path), str(pre_path), skip_symbolic_shape=False)
+        quant_input_path = pre_path
+        print(f"  [pre]   quant pre-process done: {pre_path.name}")
+    except Exception as exc:  # noqa: BLE001 - non-fatal optimization step
+        print(f"  [pre]   quant_pre_process skipped ({exc})")
+
     fp32_sess = make_session(fp32_path, args.threads)
     input_name = fp32_sess.get_inputs()[0].name
     reader = PalmVeinCalibrationReader(calib_images, input_name, args.input_size)
 
-    # Try per-channel first (requires opset >= 13), fallback to per-tensor
-    try:
-        quantize_static(
-            model_input=str(fp32_path),
-            model_output=str(int8_path),
-            calibration_data_reader=reader,
-            quant_format=QuantFormat.QDQ,
-            activation_type=QuantType.QInt8,
-            weight_type=QuantType.QInt8,
-            per_channel=True,
-        )
-    except ValueError as e:
-        if "opset" in str(e).lower():
-            print(f"  [warn] per-channel requires opset>=13, falling back to per-tensor")
-            reader2 = PalmVeinCalibrationReader(calib_images, input_name, args.input_size)
-            quantize_static(
-                model_input=str(fp32_path),
-                model_output=str(int8_path),
-                calibration_data_reader=reader2,
-                quant_format=QuantFormat.QDQ,
-                activation_type=QuantType.QInt8,
-                weight_type=QuantType.QInt8,
-                per_channel=False,
-            )
-        else:
-            raise
+    # Strict per-channel. NEVER silently downgrade to per-tensor: a quality drop
+    # must be visible, not hidden. If this raises, fix the export instead.
+    quantize_static(
+        model_input=str(quant_input_path),
+        model_output=str(int8_path),
+        calibration_data_reader=reader,
+        quant_format=QuantFormat.QDQ,
+        activation_type=QuantType.QInt8,
+        weight_type=QuantType.QInt8,
+        per_channel=True,
+    )
+    quant_recipe = {
+        "per_channel": True,
+        "quant_format": "QDQ",
+        "activation_type": "QInt8",
+        "weight_type": "QInt8",
+        "quant_input_onnx": str(quant_input_path),
+        "quant_pre_process": quant_input_path.name.endswith("_pre.onnx"),
+    }
 
     fp32_size = fp32_path.stat().st_size / 1e6
     int8_size = int8_path.stat().st_size / 1e6
@@ -206,6 +248,7 @@ def main():
         "fp32_4t_ms": round(fp32_stats["mean_ms"], 4),
         "int8_4t_ms": round(int8_stats["mean_ms"], 4),
         "speedup_x": round(speedup, 4),
+        "quant_recipe": quant_recipe,
     }
 
     out_path = model_dir / "benchmark_int8_static_results.json"

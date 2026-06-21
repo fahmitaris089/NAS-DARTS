@@ -1,11 +1,11 @@
 {
-  "exported_at": "2026-05-14T22:53:19.261316",
+  "exported_at": "2026-06-21T00:43:52.835658",
   "model": "MobileNetV3Large",
   "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/MobileNetV3Large/best_model.pth",
   "onnx_path": "/Users/fahmitaris/Downloads/NAS-DARTS/MobileNetV3Large/mobilenetv3_benchmark.onnx",
   "num_classes": 834,
   "input_size": 224,
-  "opset": 12,
+  "opset": 13,
   "backend": "onnxruntime",
   "output_names": [
     "logits"

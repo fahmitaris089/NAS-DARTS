@@ -1,0 +1,8 @@
+{
+  "onnx": "MobileNetV3Large/mobilenetv3_benchmark_int8_static.onnx",
+  "data_dir": "/Users/fahmitaris/Downloads/NAS-DARTS-TEMP/preprocessed_results",
+  "split": "test",
+  "num_samples": 834,
+  "top1_correct": 823,
+  "top1_accuracy": 0.986810551558753
+}

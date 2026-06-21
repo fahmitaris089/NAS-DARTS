@@ -1,0 +1,21 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_mbconv_C6_stemds4_834cls",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_mbconv_C6_stemds4_834cls/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_mbconv_C6_stemds4_834cls/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS-TEMP/preprocessed_results",
+  "num_calib": 200,
+  "threads": 4,
+  "fp32_size_mb": 0.9369,
+  "int8_size_mb": 0.7199,
+  "fp32_4t_ms": 4.4621,
+  "int8_4t_ms": 2.2167,
+  "speedup_x": 2.013,
+  "quant_recipe": {
+    "per_channel": true,
+    "quant_format": "QDQ",
+    "activation_type": "QInt8",
+    "weight_type": "QInt8",
+    "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_mbconv_C6_stemds4_834cls/model_benchmark_pre.onnx",
+    "quant_pre_process": true
+  }
+}

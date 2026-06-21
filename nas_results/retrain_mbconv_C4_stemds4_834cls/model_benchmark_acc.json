@@ -1,0 +1,8 @@
+{
+  "onnx": "nas_results/retrain_mbconv_C4_stemds4_834cls/model_benchmark.onnx",
+  "data_dir": "/Users/fahmitaris/Downloads/NAS-DARTS-TEMP/preprocessed_results",
+  "split": "test",
+  "num_samples": 834,
+  "top1_correct": 811,
+  "top1_accuracy": 0.9724220623501199
+}

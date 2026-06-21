@@ -166,18 +166,17 @@ class EvalNetwork(nn.Module):
 
         C_curr = C_init * 3  # stem output
 
-        # Stem: downsample by `stem_downsample` (power of 2) via stacked stride-2
-        # convs. For stem_downsample=2 this is a single conv (224→112), identical
-        # to the original stem. For 4: two stride-2 stages (224→112→56).
+        # Stem: first stride-2 conv, then a stride-2 max-pool for each *extra*
+        # downsample step. stem_downsample=2 → single conv (224→112), identical to
+        # the original stem. stem_downsample=4 → conv(224→112)+maxpool(112→56);
+        # the extra downsample carries no parameters (matches the trained models).
         n_down = max(1, int(stem_downsample).bit_length() - 1)  # 2→1, 4→2, 8→3
-        stem_layers = []
-        c_in = 3
-        for k in range(n_down):
-            stem_layers.append(nn.Conv2d(c_in, C_curr, 3, stride=2, padding=1, bias=False))
-            stem_layers.append(nn.BatchNorm2d(C_curr))
-            if k < n_down - 1:
-                stem_layers.append(nn.ReLU(inplace=False))
-            c_in = C_curr
+        stem_layers = [
+            nn.Conv2d(3, C_curr, 3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(C_curr),
+        ]
+        for _ in range(n_down - 1):
+            stem_layers.append(nn.MaxPool2d(3, stride=2, padding=1))
         self.stem = nn.Sequential(*stem_layers)
 
         # Reduction cell positions

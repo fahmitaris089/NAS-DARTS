@@ -1,0 +1,20 @@
+{
+  "device_note": "INT8 per-op latency, QDQ-boundary floor subtracted (0.03299 ms) to remove isolated-probe artifact; ms",
+  "threads": 4,
+  "iters": 200,
+  "qdq_floor_ms": 0.03299,
+  "cost": {
+    "none": 0.0,
+    "skip_connect": 0.0,
+    "sep_conv_3x3": 0.0386,
+    "sep_conv_5x5": 0.05758,
+    "dil_conv_3x3": 0.02028,
+    "dil_conv_5x5": 0.02886,
+    "mbconv3_3x3": 0.06517,
+    "mbconv6_3x3": 0.08368,
+    "rep_conv_3x3": 0.02414,
+    "rep_conv_5x5": 0.04426,
+    "avg_pool_3x3": 0.01428,
+    "max_pool_3x3": 0.13046
+  }
+}
