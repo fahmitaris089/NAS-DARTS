@@ -204,6 +204,27 @@ Referensi yang mendukung framing akademik:
 - **Skenario B (tercepat):** **l0.05 C6 FP32** — 97.96%, 3.99 ms, 0.79 MB.
 - **Skenario C (akurasi maks):** mbconv_C6 FP32 — 99.28%, 7.16 ms.
 
+## Framing Evaluasi Baseline
+
+Untuk paper/thesis, baseline perlu dipisah menjadi dua kelompok agar klaim edge tidak kabur:
+
+### A. Deployment / lightweight baselines (tabel utama Raspberry Pi 5)
+Kelompok ini wajib dievaluasi di Raspberry Pi 5 karena relevan langsung dengan klaim efisiensi edge:
+- **Proposed NAS:** hwNAS l0.05 C6 FP32; hwNAS l0.20 C8 INT8.
+- **Lightweight baselines:** MobileNetV3Small; ShuffleNetV2_x1_0; EfficientNetLite0.
+- **Existing baseline lama:** MobileNetV3Large.
+
+Metrik wajib: akurasi, parameter, size ONNX, latency FP32, latency INT8, mean/median/p95 latency, dan presisi deploy terbaik per-model.
+
+### B. Large CNN / teacher candidates (tabel pendukung)
+Kelompok ini dipakai sebagai **accuracy ceiling** dan kandidat teacher, bukan sebagai target deploy utama:
+- EfficientNetV2M, EfficientNetB4, ConvNeXtBase, RegNetY16GF, DenseNet121, ResNet50, VGG16, InceptionV3.
+
+Metrik utama cukup: akurasi, parameter, training/test result, dan ukuran model. Benchmark Raspberry Pi 5 untuk semua model besar **tidak wajib** karena mereka tidak dirancang sebagai edge deployment baseline. Jika waktu memungkinkan, benchmark 1–2 model besar saja (mis. EfficientNetV2M dan ConvNeXtBase) untuk menunjukkan trade-off: akurasi tinggi tetapi tidak edge-feasible.
+
+Kalimat framing:
+> Large CNNs are evaluated as accuracy upper bounds and teacher candidates, while Raspberry Pi deployment benchmarking focuses on lightweight baselines and the proposed NAS models. This separation avoids conflating accuracy-ceiling models with edge-deployable models.
+
 ## Status KD (hwNAS_C6, λ=0.05)
 | config | test_acc |
 |---|---|

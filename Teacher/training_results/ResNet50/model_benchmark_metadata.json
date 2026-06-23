@@ -1,0 +1,16 @@
+{
+  "exported_at": "2026-06-23T19:27:36.302012",
+  "model": "ResNet50",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ResNet50",
+  "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ResNet50/best_model.pth",
+  "onnx_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ResNet50/model_benchmark.onnx",
+  "num_classes": 834,
+  "input_size": 224,
+  "opset": 13,
+  "backend": "onnxruntime",
+  "output_names": [
+    "logits"
+  ],
+  "logits_output_name": "logits",
+  "model_size_mb": 100.785859
+}

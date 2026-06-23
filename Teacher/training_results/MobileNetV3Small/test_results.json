@@ -1,0 +1,15 @@
+{
+  "accuracy": 0.9964028776978417,
+  "precision": 0.9946043165467626,
+  "recall": 0.9964028776978417,
+  "f1_score": 0.9952038369304557,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.025077378308331524,
+  "num_test_samples": 834,
+  "best_epoch": 185,
+  "best_val_loss": 2.0171653721258225,
+  "total_params": 2372706,
+  "training_time_min": 21.22221939166387,
+  "model_name": "MobileNetV3Small"
+}

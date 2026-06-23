@@ -1,0 +1,22 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/InceptionV3",
+  "model": "InceptionV3",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/InceptionV3/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/InceptionV3/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS-TEMP/preprocessed_results",
+  "num_calib": 200,
+  "threads": 4,
+  "fp32_size_mb": 93.9566,
+  "int8_size_mb": 23.9623,
+  "fp32_4t_ms": 34.8646,
+  "int8_4t_ms": 23.9552,
+  "speedup_x": 1.4554,
+  "quant_recipe": {
+    "per_channel": true,
+    "quant_format": "QDQ",
+    "activation_type": "QInt8",
+    "weight_type": "QInt8",
+    "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/InceptionV3/model_benchmark_pre.onnx",
+    "quant_pre_process": true
+  }
+}

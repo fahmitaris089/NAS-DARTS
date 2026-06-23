@@ -1,0 +1,16 @@
+{
+  "exported_at": "2026-06-23T19:18:36.410936",
+  "model": "ConvNeXtBase",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ConvNeXtBase",
+  "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ConvNeXtBase/best_model.pth",
+  "onnx_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ConvNeXtBase/model_benchmark.onnx",
+  "num_classes": 834,
+  "input_size": 224,
+  "opset": 13,
+  "backend": "onnxruntime",
+  "output_names": [
+    "logits"
+  ],
+  "logits_output_name": "logits",
+  "model_size_mb": 353.933699
+}

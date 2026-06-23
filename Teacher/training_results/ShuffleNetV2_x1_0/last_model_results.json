@@ -1,0 +1,12 @@
+{
+  "accuracy": 0.9928057553956835,
+  "precision": 0.9892086330935251,
+  "recall": 0.9928057553956835,
+  "f1_score": 0.9904076738609112,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.020515450724848994,
+  "num_test_samples": 834,
+  "model_name": "ShuffleNetV2_x1_0",
+  "epoch": 200
+}

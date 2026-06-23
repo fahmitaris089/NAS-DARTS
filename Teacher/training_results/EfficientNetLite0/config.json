@@ -1,0 +1,20 @@
+{
+  "model": "EfficientNetLite0",
+  "data_dir": "/workspace/preprocessed_results",
+  "output_dir": "training_results",
+  "epochs": 200,
+  "batch_size": 32,
+  "freeze_epochs": 5,
+  "lr_head": 0.0003,
+  "lr_backbone": 5e-05,
+  "weight_decay": 0.05,
+  "label_smoothing": 0.2,
+  "warmup_epochs": 5,
+  "grad_clip": 1.0,
+  "num_workers": 4,
+  "no_augmentation": false,
+  "seed": 42,
+  "device": "cuda",
+  "timestamp": "2026-06-23T12:12:17.857918",
+  "total_params": 4439362
+}
