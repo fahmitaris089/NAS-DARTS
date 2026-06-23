@@ -1,0 +1,15 @@
+{
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.1635582093839292,
+  "num_test_samples": 834,
+  "best_epoch": 195,
+  "best_val_loss": 1.8929940201967455,
+  "total_params": 88421314,
+  "training_time_min": 150.85140775442125,
+  "model_name": "ConvNeXtBase"
+}

@@ -1,0 +1,15 @@
+{
+  "accuracy": 0.9976019184652278,
+  "precision": 0.9964028776978417,
+  "recall": 0.9976019184652278,
+  "f1_score": 0.996802557953637,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.15073481312504522,
+  "num_test_samples": 834,
+  "best_epoch": 168,
+  "best_val_loss": 1.9560276066942466,
+  "total_params": 19043978,
+  "training_time_min": 85.4473382472992,
+  "model_name": "EfficientNetB4"
+}

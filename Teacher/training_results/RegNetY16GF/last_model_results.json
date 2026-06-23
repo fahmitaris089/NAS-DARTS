@@ -1,0 +1,12 @@
+{
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.17528571905913176,
+  "num_test_samples": 834,
+  "model_name": "RegNetY16GF",
+  "epoch": 200
+}

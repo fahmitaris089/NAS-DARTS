@@ -41,6 +41,8 @@ Thumbs.db
 *.pth
 *.pt
 *.onnx
+*.zip
+*.npy
 
 # Large data files
 *.h5
@@ -60,3 +62,13 @@ logs/
 results/
 outputs/
 checkpoints/
+
+# Generated images / plots
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.tif
+*.tiff
+*.gif
+*.webp

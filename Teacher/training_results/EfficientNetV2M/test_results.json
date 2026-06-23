@@ -1,0 +1,15 @@
+{
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.14916835890875924,
+  "num_test_samples": 834,
+  "best_epoch": 199,
+  "best_val_loss": 1.8660120986920181,
+  "total_params": 53926710,
+  "training_time_min": 97.85424135526021,
+  "model_name": "EfficientNetV2M"
+}

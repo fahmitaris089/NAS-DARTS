@@ -1,0 +1,8 @@
+{
+  "onnx": "nas_results/retrain_hwNAS_l0.20_C6_stemds4/model_benchmark_int8_static.onnx",
+  "data_dir": "/Users/fahmitaris/Downloads/NAS-DARTS-TEMP/preprocessed_results",
+  "split": "test",
+  "num_samples": 834,
+  "top1_correct": 812,
+  "top1_accuracy": 0.973621103117506
+}

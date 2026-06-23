@@ -1,0 +1,27 @@
+============================================================
+  PALM VEIN RECOGNITION — MODEL COMPARISON SUMMARY
+============================================================
+
+Ranking by Test Accuracy:
+  #1  ResNet50              Acc=100.00%  F1=1.0000  Params=25.2M  BestEp=160
+  #2  EfficientNetV2M       Acc=100.00%  F1=1.0000  Params=53.9M  BestEp=199
+  #3  ConvNeXtBase          Acc=100.00%  F1=1.0000  Params=88.4M  BestEp=195
+  #4  RegNetY16GF           Acc=100.00%  F1=1.0000  Params=83.1M  BestEp=196
+  #5  DenseNet121           Acc=99.88%  F1=0.9984  Params=7.8M  BestEp=196
+  #6  MobileNetV3Large      Acc=99.88%  F1=0.9984  Params=5.3M  BestEp=163
+  #7  InceptionV3           Acc=99.76%  F1=0.9968  Params=26.7M  BestEp=195
+  #8  EfficientNetB4        Acc=99.76%  F1=0.9968  Params=19.0M  BestEp=168
+  #9  VGG16                 Acc=99.64%  F1=0.9952  Params=137.7M  BestEp=197
+
+BEST MODEL: ResNet50
+  Accuracy  : 100.00%
+  F1 Score  : 1.0000
+  AUC       : 1.0
+  EER       : 0.0
+  Parameters: 25,216,898
+
+MOST EFFICIENT (>90% acc): MobileNetV3Large
+  Accuracy  : 99.88%
+  Parameters: 5,270,386
+
+============================================================

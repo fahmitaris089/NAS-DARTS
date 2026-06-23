@@ -11,6 +11,60 @@ Dibuat agar perintah tidak lupa dan konsisten. Semua flag di sini sudah dicocokk
 
 ---
 
+## ⭐ PROTOKOL NAS DEFINITIF (jalankan SEKALI, lalu berhenti)
+
+Tujuan: deployment **INT8 di Raspberry Pi**. Search hardware-aware 12-ops + LUT int8.
+Konfigurasi ini sudah dikunci — jangan diubah-ubah lagi.
+
+**Prasyarat (sekali):**
+- LUT int8 sudah dibangun & dikoreksi: `latency_lut_pi_int8_corrected.json` (di repo).
+  Salin file ini ke server tempat search dijalankan.
+- Search space = 12 ops di `nas_config.PRIMITIVES` (sudah termasuk rep_conv).
+
+**Langkah 1 — Search hardware-aware, sweep λ (server/GPU).** Ini menghasilkan Pareto front (figure paper):
+```bash
+for L in 0.0 0.05 0.10 0.20; do
+  python search.py --data_dir /workspace/preprocessed_results --split_path split_info.json \
+    --output_dir nas_results/search_hwint8_l${L} \
+    --oplat_lambda ${L} --latency_lut latency_lut_pi_int8_corrected.json --seed 42
+done
+```
+- λ=0 = DARTS murni (baseline tanpa penalti latency).
+- λ naik = makin memilih operator murah (dil_conv_3x3 / rep_conv_3x3).
+
+**Langkah 2 — Retrain tiap genotype UNIK (config terkunci).** Dedupe dulu genotype 4 λ; retrain yang berbeda saja:
+```bash
+python retrain.py --genotype nas_results/search_hwint8_l<L>/genotype_final.json \
+  --data_dir /workspace/preprocessed_results --split_path split_info.json \
+  --output_dir nas_results/retrain_hwint8_l<L>_C8_stemds4 \
+  --C_init 8 --num_cells 8 --stem_downsample 4 --reduction_indices 2,5 \
+  --epochs 300 --batch_size 64 --lr 0.001 --weight_decay 0.05 \
+  --drop_path_prob 0.2 --cutout_length 16 --augmentation_policy v1_legacy --seed 42
+```
+
+**Langkah 3 — Export (WAJIB script retrain) → quantize → eval.**
+```bash
+python export_retrain_run6_plus2_onnx.py --model-dir nas_results/retrain_hwint8_l<L>_C8_stemds4 --opset 13
+python benchmark_int8_static.py --model_dir nas_results/retrain_hwint8_l<L>_C8_stemds4 \
+    --onnx_name model_benchmark.onnx --calib_dir preprocessed_results --num_calib 200
+python eval_onnx_accuracy.py --onnx nas_results/retrain_hwint8_l<L>_C8_stemds4/model_benchmark_int8_static.onnx \
+    --data_dir <preprocessed_results> --split_path split_info.json
+```
+
+**Langkah 4 — Benchmark INT8 di Pi** (`benchmark_compare_onnx_pi.py`) → catat akurasi + latency.
+
+**Langkah 5 — Aturan keputusan (mekanis, tanpa galau):**
+- Plot **akurasi vs latency INT8 Pi** untuk semua genotype → ambil **knee** Pareto = model final.
+- Retrain model final dengan **2 seed tambahan** (total 3) → lapor mean±std + uji McNemar vs baseline.
+- **VALIDASI LUT:** bandingkan latency-prediksi LUT vs latency Pi terukur → tunjukkan korelasi.
+- **BERHENTI.** Tidak ada search baru setelah ini.
+
+> Catatan jujur untuk paper: search hanya mengoptimasi **operator**, bukan spatial schedule
+> (itu tetap ablation retrain). LUT int8 per-op punya bias aditivitas QDQ (sudah dikoreksi via
+> pengurangan floor) → karena itu validasi end-to-end di Langkah 5 wajib.
+
+---
+
 ## 0. Konvensi path dataset
 
 `data_dir` berbeda per mesin — sesuaikan:

@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-06-22T09:20:10.846762",
+  "best_epoch": 89,
+  "best_val_acc": 0.9928,
+  "test_acc": 0.994,
+  "test_loss": 0.5145,
+  "test_auc": 0.9999165133679371,
+  "test_eer_pct": 0.0083,
+  "kd_config": {
+    "teacher": "efficientnet_v2_m",
+    "temperature": 20.0,
+    "alpha": 0.5,
+    "kd_weight": 0.5,
+    "epochs": 200,
+    "lr": 0.0003
+  }
+}

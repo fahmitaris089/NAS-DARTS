@@ -1,0 +1,15 @@
+{
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.14621328424524377,
+  "num_test_samples": 834,
+  "best_epoch": 160,
+  "best_val_loss": 1.9343518882060795,
+  "total_params": 25216898,
+  "training_time_min": 72.26923300425211,
+  "model_name": "ResNet50"
+}

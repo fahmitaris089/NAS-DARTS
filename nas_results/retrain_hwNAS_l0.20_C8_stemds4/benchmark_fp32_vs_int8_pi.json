@@ -1,0 +1,32 @@
+{
+  "label": "retrain_hwNAS_l0.20_C8_stemds4",
+  "model_dir": "nas_results/retrain_hwNAS_l0.20_C8_stemds4",
+  "num_samples": 834,
+  "threads": 4,
+  "fp32": {
+    "onnx": "nas_results/retrain_hwNAS_l0.20_C8_stemds4/model_benchmark.onnx",
+    "accuracy": 0.9916067146282974,
+    "correct": 827,
+    "n": 834,
+    "size_mb": 1.527409,
+    "mean_ms": 1.886645017985606,
+    "median_ms": 1.777083499999943,
+    "p95_ms": 2.4019397999998304
+  },
+  "int8": {
+    "onnx": "nas_results/retrain_hwNAS_l0.20_C8_stemds4/model_benchmark_int8_static.onnx",
+    "accuracy": 0.9892086330935251,
+    "correct": 825,
+    "n": 834,
+    "size_mb": 0.605122,
+    "mean_ms": 1.7273494424460447,
+    "median_ms": 1.6521040000001541,
+    "p95_ms": 2.1748252000002073
+  },
+  "int8_vs_fp32": {
+    "latency_speedup_x": 1.0922196584114374,
+    "size_ratio_x": 2.524133976289079,
+    "accuracy_delta_pp": -0.23980815347722784,
+    "int8_faster": true
+  }
+}

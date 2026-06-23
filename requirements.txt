@@ -32,3 +32,6 @@ thop>=0.1.1
 
 # ML utilities
 scikit-learn>=1.3
+
+# Model zoo tambahan untuk GhostNet baseline
+timm>=1.0.0

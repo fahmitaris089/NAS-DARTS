@@ -1,0 +1,15 @@
+{
+  "accuracy": 0.9976019184652278,
+  "precision": 0.9964028776978417,
+  "recall": 0.9976019184652278,
+  "f1_score": 0.996802557953637,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.15340052710639107,
+  "num_test_samples": 834,
+  "best_epoch": 195,
+  "best_val_loss": 1.8921765017566634,
+  "total_params": 26693476,
+  "training_time_min": 88.4555516521136,
+  "model_name": "InceptionV3"
+}

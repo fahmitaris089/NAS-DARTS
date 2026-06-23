@@ -1,0 +1,21 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwNAS_l0.20_C4_stemds4",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwNAS_l0.20_C4_stemds4/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwNAS_l0.20_C4_stemds4/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS-TEMP/preprocessed_results",
+  "num_calib": 200,
+  "threads": 4,
+  "fp32_size_mb": 0.5295,
+  "int8_size_mb": 0.34,
+  "fp32_4t_ms": 1.0437,
+  "int8_4t_ms": 1.0083,
+  "speedup_x": 1.0351,
+  "quant_recipe": {
+    "per_channel": true,
+    "quant_format": "QDQ",
+    "activation_type": "QInt8",
+    "weight_type": "QInt8",
+    "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwNAS_l0.20_C4_stemds4/model_benchmark_pre.onnx",
+    "quant_pre_process": true
+  }
+}
