@@ -161,6 +161,7 @@ def quantize_int8(
     threads: int,
     activation_type: QuantType,
     weight_type: QuantType,
+    skip_first_conv: int,
 ) -> dict:
     sess = make_session(fp32_path, threads)
     input_name = sess.get_inputs()[0].name
@@ -176,6 +177,17 @@ def quantize_int8(
     except Exception as exc:  # noqa: BLE001
         print(f"    [warn] quant_pre_process skipped: {exc}")
 
+    nodes_to_quantize = None
+    if skip_first_conv > 0:
+        model = onnx.load(str(quant_input_path))
+        conv_nodes = [node.name for node in model.graph.node if node.op_type == "Conv"]
+        gemm_nodes = [node.name for node in model.graph.node if node.op_type == "Gemm"]
+        nodes_to_quantize = conv_nodes[skip_first_conv:] + gemm_nodes
+        print(
+            f"    partial INT8: skipping first {skip_first_conv} Conv nodes, "
+            f"quantizing {len(nodes_to_quantize)} Conv/Gemm nodes"
+        )
+
     quantize_static(
         model_input=str(quant_input_path),
         model_output=str(int8_path),
@@ -184,6 +196,7 @@ def quantize_int8(
         activation_type=activation_type,
         weight_type=weight_type,
         per_channel=True,
+        nodes_to_quantize=nodes_to_quantize,
     )
     return {
         "per_channel": True,
@@ -192,6 +205,8 @@ def quantize_int8(
         "weight_type": "QUInt8" if weight_type == QuantType.QUInt8 else "QInt8",
         "quant_input_onnx": str(quant_input_path),
         "quant_pre_process": quant_input_path.name.endswith("_pre.onnx"),
+        "skip_first_conv": skip_first_conv,
+        "nodes_to_quantize": len(nodes_to_quantize) if nodes_to_quantize is not None else None,
     }
 
 
@@ -260,6 +275,7 @@ def process_model(model_dir: Path, args: argparse.Namespace, calib_images: list[
             args.threads,
             activation_type,
             weight_type,
+            args.skip_first_conv,
         )
         print(f"  INT8 ONNX: {int8_path.name} ({int8_path.stat().st_size / 1e6:.3f} MB)")
 
@@ -316,6 +332,15 @@ def parse_args() -> argparse.Namespace:
         help="Static PTQ weight type.",
     )
     parser.add_argument("--skip-existing", action="store_true")
+    parser.add_argument(
+        "--skip-first-conv",
+        type=int,
+        default=0,
+        help=(
+            "Partial INT8 recipe: leave the first N Conv nodes in FP32 and quantize "
+            "remaining Conv/Gemm nodes. Useful for quantization-sensitive MobileNetV3Small."
+        ),
+    )
     return parser.parse_args()
 
 

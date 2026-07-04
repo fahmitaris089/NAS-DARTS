@@ -1,0 +1,128 @@
+{
+  "genotype": {
+    "normal": [
+      [
+        "rep_conv_3x3",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        0
+      ],
+      [
+        "skip_connect",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        2
+      ],
+      [
+        "dil_conv_3x3",
+        1
+      ],
+      [
+        "dil_conv_3x3",
+        0
+      ],
+      [
+        "skip_connect",
+        1
+      ],
+      [
+        "dil_conv_3x3",
+        0
+      ]
+    ],
+    "normal_concat": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "reduce": [
+      [
+        "dil_conv_3x3",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        0
+      ],
+      [
+        "rep_conv_3x3",
+        0
+      ],
+      [
+        "skip_connect",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        0
+      ],
+      [
+        "rep_conv_3x3",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        4
+      ],
+      [
+        "rep_conv_3x3",
+        3
+      ]
+    ],
+    "reduce_concat": [
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "data_dir": "/workspace/preprocessed_results",
+  "split_path": "split_info.json",
+  "output_dir": "nas_results/retrain_hwNAS_L0.05_C10_stemds8_834cls",
+  "C_init": 10,
+  "num_cells": 8,
+  "stem_downsample": 8,
+  "reduction_indices": "2,5",
+  "epochs": 300,
+  "batch_size": 64,
+  "lr": 0.001,
+  "weight_decay": 0.05,
+  "drop_path_prob": 0.2,
+  "cutout_length": 16,
+  "augmentation_policy": "v1_legacy",
+  "auxiliary": true,
+  "no_auxiliary": false,
+  "seed": 42,
+  "num_workers": 4,
+  "total_params": 573766,
+  "device": "cuda",
+  "timestamp": "2026-06-23T15:42:52.782002",
+  "retrain_cfg": {
+    "C_init": "14",
+    "num_cells": "8",
+    "auxiliary": "True",
+    "auxiliary_weight": "0.4",
+    "optimizer": "AdamW",
+    "lr": "0.001",
+    "weight_decay": "0.05",
+    "warmup_epochs": "10",
+    "warmup_factor": "0.01",
+    "epochs": "600",
+    "lr_min": "1e-06",
+    "label_smoothing": "0.2",
+    "drop_path_prob": "0.2",
+    "dropout": "0.3",
+    "grad_clip": "1.0",
+    "cutout_length": "16",
+    "batch_size": "64",
+    "num_workers": "4",
+    "use_augmentation": "True",
+    "target_params_min": "250000",
+    "target_params_max": "400000"
+  }
+}

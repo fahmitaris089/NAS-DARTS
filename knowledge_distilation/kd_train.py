@@ -332,15 +332,35 @@ def load_student(cfg: KDConfig, device: torch.device, logger: logging.Logger) ->
     # Baca C_init dan num_cells langsung dari config.json (lebih akurat dari default cfg)
     c_init    = int(retrain_cfg.get("C_init",    cfg.student_C_init))
     num_cells = int(retrain_cfg.get("num_cells", cfg.student_num_cells))
-    logger.info(f"  Student arch: C_init={c_init}, num_cells={num_cells}")
+    stem_downsample = int(retrain_cfg.get("stem_downsample", 2))
+    
+    # Parse reduction_indices: handle both list [4, 9] and string "4, 9"
+    reduction_indices_raw = retrain_cfg.get("reduction_indices", None)
+    if reduction_indices_raw is None:
+        reduction_indices = None
+    elif isinstance(reduction_indices_raw, list):
+        reduction_indices = [int(x) for x in reduction_indices_raw]
+    elif isinstance(reduction_indices_raw, str):
+        # Parse comma-separated string "4, 9" → [4, 9]
+        reduction_indices = [int(x.strip()) for x in reduction_indices_raw.split(",") if x.strip()]
+    else:
+        logger.warning(f"  Unexpected reduction_indices type: {type(reduction_indices_raw)}, using None")
+        reduction_indices = None
+    
+    logger.info(
+        f"  Student arch: C_init={c_init}, num_cells={num_cells}, "
+        f"stem_downsample={stem_downsample}, reduction_indices={reduction_indices}"
+    )
 
     student = EvalNetwork(
-        genotype    = genotype,
-        C_init      = c_init,
-        num_cells   = num_cells,
-        num_classes = cfg.num_classes,
-        auxiliary   = False,   # KD: hanya pakai main head
-        dropout     = cfg.student_dropout,
+        genotype          = genotype,
+        C_init            = c_init,
+        num_cells         = num_cells,
+        num_classes       = cfg.num_classes,
+        auxiliary         = False,   # KD: hanya pakai main head
+        dropout           = cfg.student_dropout,
+        stem_downsample   = stem_downsample,
+        reduction_indices = reduction_indices,
     )
 
     if cfg.no_pretrained_student:

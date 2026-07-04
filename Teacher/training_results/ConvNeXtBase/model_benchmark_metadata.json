@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-06-23T19:18:36.410936",
+  "exported_at": "2026-06-24T18:48:56.530582",
   "model": "ConvNeXtBase",
   "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ConvNeXtBase",
   "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ConvNeXtBase/best_model.pth",

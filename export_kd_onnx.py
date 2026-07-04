@@ -28,11 +28,22 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from genotypes import dict_to_genotype
 from model_eval import EvalNetwork
+from operations import fuse_reparam_model
 
 
 def load_json(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def parse_reduction_indices(raw_value) -> list[int] | None:
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, list):
+        return [int(x) for x in raw_value]
+    if isinstance(raw_value, str):
+        return [int(x.strip()) for x in raw_value.split(",") if x.strip()]
+    raise TypeError(f"Unsupported reduction_indices type: {type(raw_value)}")
 
 
 def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwork:
@@ -44,17 +55,22 @@ def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwor
     num_cells = int(student_cfg.get("num_cells", kd_cfg.get("student_num_cells", 8)))
     num_classes = int(kd_cfg.get("num_classes", 834))
     dropout   = float(kd_cfg.get("student_dropout", 0.3))
+    stem_downsample = int(student_cfg.get("stem_downsample", 2))
+    reduction_indices = parse_reduction_indices(student_cfg.get("reduction_indices"))
 
     print(f"  Architecture : C_init={c_init}, num_cells={num_cells}, "
-          f"num_classes={num_classes}, auxiliary=False")
+          f"num_classes={num_classes}, auxiliary=False, "
+          f"stem_downsample={stem_downsample}, reduction_indices={reduction_indices}")
 
     model = EvalNetwork(
-        genotype    = genotype,
-        C_init      = c_init,
-        num_cells   = num_cells,
-        num_classes = num_classes,
-        auxiliary   = False,   # KD selalu auxiliary=False
-        dropout     = dropout,
+        genotype          = genotype,
+        C_init            = c_init,
+        num_cells         = num_cells,
+        num_classes       = num_classes,
+        auxiliary         = False,   # KD selalu auxiliary=False
+        dropout           = dropout,
+        stem_downsample   = stem_downsample,
+        reduction_indices = reduction_indices,
     )
 
     state_dict = torch.load(model_path, map_location="cpu")
@@ -68,6 +84,9 @@ def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwor
         print(f"  [warn] Unexpected keys: {unexpected[:3]}{'...' if len(unexpected)>3 else ''}")
 
     model.eval()
+    _, n_fused = fuse_reparam_model(model)
+    if n_fused:
+        print(f"  Fused        : {n_fused} RepConvBN block(s)")
     n_params = sum(p.numel() for p in model.parameters()) / 1e3
     print(f"  Params       : {n_params:.1f}K")
     return model
@@ -107,6 +126,8 @@ def write_metadata(
 ) -> Path:
     c_init    = int(student_cfg.get("C_init",    kd_cfg.get("student_C_init", 4)))
     num_cells = int(student_cfg.get("num_cells", kd_cfg.get("student_num_cells", 8)))
+    stem_downsample = int(student_cfg.get("stem_downsample", 2))
+    reduction_indices = parse_reduction_indices(student_cfg.get("reduction_indices"))
     metadata = {
         "exported_at"  : datetime.now().isoformat(),
         "model_dir"    : str(model_dir),
@@ -117,6 +138,8 @@ def write_metadata(
         "num_classes"  : int(kd_cfg.get("num_classes", 834)),
         "c_init"       : c_init,
         "num_cells"    : num_cells,
+        "stem_downsample": stem_downsample,
+        "reduction_indices": reduction_indices,
         "auxiliary"    : False,
         "model_size_mb": round(size_mb, 4),
         "backend"      : "onnxruntime",

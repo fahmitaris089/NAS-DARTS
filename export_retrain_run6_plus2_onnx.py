@@ -8,6 +8,12 @@ from the saved retrain config and genotype, then writes:
 - model_benchmark.onnx
 - model_benchmark_metadata.json
 
+⚠️ WARNING: This script is ONLY for NAS EvalNetwork models (retrain_* folders).
+DO NOT use this on Teacher models (Teacher/training_results/*) — use
+Teacher/export_all_teacher_onnx_int8.py instead. Using the wrong export script
+produces architecture mismatches that cause INT8 quantization to fail silently
+with random accuracy.
+
 Example:
     python3 export_retrain_run6_plus2_onnx.py
     python3 export_retrain_run6_plus2_onnx.py --model-dir nas_results/retrain_run6_plus2_e100
@@ -89,6 +95,15 @@ def build_model_bundle(args: argparse.Namespace) -> dict[str, Any]:
         raise FileNotFoundError(f"Config not found: {config_path}")
     if not model_path.exists():
         raise FileNotFoundError(f"Weights not found: {model_path}")
+    
+    # Safety check: prevent accidental use on Teacher models
+    if not args.force and ("Teacher" in str(model_dir) or "training_results" in str(model_dir)):
+        raise RuntimeError(
+            f"BLOCKED: {model_dir} looks like a Teacher model folder.\n"
+            "This script is ONLY for NAS EvalNetwork models (nas_results/retrain_*).\n"
+            "Use Teacher/export_all_teacher_onnx_int8.py for Teacher models instead.\n"
+            "Override with --force if you are certain this is a NAS retrain result."
+        )
 
     cfg = load_json(config_path)
     genotype_path = args.genotype or resolve_repo_path(cfg.get("genotype_path"))
@@ -231,6 +246,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--opset", type=int, default=13)
     parser.add_argument("--include-embeddings", dest="include_embeddings", action="store_true")
     parser.add_argument("--logits-only", dest="include_embeddings", action="store_false")
+    parser.add_argument("--force", action="store_true",
+                        help="Skip Teacher model safety check (use with caution)")
     parser.set_defaults(include_embeddings=True)
     return parser.parse_args()
 

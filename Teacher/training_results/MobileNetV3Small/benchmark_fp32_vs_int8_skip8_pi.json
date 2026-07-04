@@ -1,0 +1,32 @@
+{
+  "label": "MobileNetV3Small_INT8_skip8",
+  "model_dir": "Teacher/training_results/MobileNetV3Small",
+  "num_samples": 834,
+  "threads": 4,
+  "fp32": {
+    "onnx": "Teacher/training_results/MobileNetV3Small/model_benchmark_fixed_bn30.onnx",
+    "accuracy": 0.9964028776978417,
+    "correct": 831,
+    "n": 834,
+    "size_mb": 9.50522,
+    "mean_ms": 4.211411471223024,
+    "median_ms": 4.170333500000067,
+    "p95_ms": 4.5442853999999535
+  },
+  "int8": {
+    "onnx": "Teacher/training_results/MobileNetV3Small/model_benchmark_fixed_bn30_int8_skip8_static.onnx",
+    "accuracy": 0.9976019184652278,
+    "correct": 832,
+    "n": 834,
+    "size_mb": 2.714049,
+    "mean_ms": 1.43887779256597,
+    "median_ms": 1.373416499999891,
+    "p95_ms": 1.638043750000584
+  },
+  "int8_vs_fp32": {
+    "latency_speedup_x": 2.9268722423693525,
+    "size_ratio_x": 3.5022285890932694,
+    "accuracy_delta_pp": 0.11990407673860837,
+    "int8_faster": true
+  }
+}

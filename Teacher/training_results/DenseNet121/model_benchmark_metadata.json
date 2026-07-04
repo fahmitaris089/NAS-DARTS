@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-06-23T19:20:30.533847",
+  "exported_at": "2026-06-24T18:50:31.680352",
   "model": "DenseNet121",
   "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/DenseNet121",
   "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/DenseNet121/best_model.pth",

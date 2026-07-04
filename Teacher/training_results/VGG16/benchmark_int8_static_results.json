@@ -7,16 +7,18 @@
   "num_calib": 200,
   "threads": 4,
   "fp32_size_mb": 550.7177,
-  "int8_size_mb": 137.9231,
-  "fp32_4t_ms": 89.232,
-  "int8_4t_ms": 54.6163,
-  "speedup_x": 1.6338,
+  "int8_size_mb": 137.9229,
+  "fp32_4t_ms": 94.1784,
+  "int8_4t_ms": 63.7243,
+  "speedup_x": 1.4779,
   "quant_recipe": {
     "per_channel": true,
     "quant_format": "QDQ",
-    "activation_type": "QInt8",
+    "activation_type": "QUInt8",
     "weight_type": "QInt8",
     "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/VGG16/model_benchmark_pre.onnx",
-    "quant_pre_process": true
+    "quant_pre_process": true,
+    "skip_first_conv": 0,
+    "nodes_to_quantize": null
   }
 }

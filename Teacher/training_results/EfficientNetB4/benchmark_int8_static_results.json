@@ -7,16 +7,18 @@
   "num_calib": 200,
   "threads": 4,
   "fp32_size_mb": 76.0735,
-  "int8_size_mb": 21.2941,
-  "fp32_4t_ms": 45.3852,
-  "int8_4t_ms": 10.9476,
-  "speedup_x": 4.1457,
+  "int8_size_mb": 21.2909,
+  "fp32_4t_ms": 49.9148,
+  "int8_4t_ms": 12.6971,
+  "speedup_x": 3.9312,
   "quant_recipe": {
     "per_channel": true,
     "quant_format": "QDQ",
-    "activation_type": "QInt8",
+    "activation_type": "QUInt8",
     "weight_type": "QInt8",
     "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/EfficientNetB4/model_benchmark_pre.onnx",
-    "quant_pre_process": true
+    "quant_pre_process": true,
+    "skip_first_conv": 0,
+    "nodes_to_quantize": null
   }
 }

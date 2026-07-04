@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-06-23T19:21:32.018683",
+  "exported_at": "2026-06-24T18:50:49.384179",
   "model": "EfficientNetB4",
   "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/EfficientNetB4",
   "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/EfficientNetB4/best_model.pth",

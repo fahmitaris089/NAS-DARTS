@@ -1,0 +1,32 @@
+{
+  "label": "MobileNetV3Small-Opset10-PerTensor",
+  "model_dir": "Teacher/training_results/MobileNetV3Small",
+  "num_samples": 834,
+  "threads": 4,
+  "fp32": {
+    "onnx": "Teacher/training_results/MobileNetV3Small/model_benchmark_opset10.onnx",
+    "accuracy": 0.9964028776978417,
+    "correct": 831,
+    "n": 834,
+    "size_mb": 9.50522,
+    "mean_ms": 4.30761395203837,
+    "median_ms": 4.295416499999982,
+    "p95_ms": 4.564697700000197
+  },
+  "int8": {
+    "onnx": "Teacher/training_results/MobileNetV3Small/model_benchmark_opset10_int8_PERTENSOR.onnx",
+    "accuracy": 0.001199040767386091,
+    "correct": 1,
+    "n": 834,
+    "size_mb": 2.60044,
+    "mean_ms": 1.1170395815347618,
+    "median_ms": 1.05706250000015,
+    "p95_ms": 1.4392187499999043
+  },
+  "int8_vs_fp32": {
+    "latency_speedup_x": 3.8562769155591634,
+    "size_ratio_x": 3.6552352678777438,
+    "accuracy_delta_pp": -99.52038369304557,
+    "int8_faster": true
+  }
+}

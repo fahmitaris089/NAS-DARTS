@@ -7,16 +7,18 @@
   "num_calib": 200,
   "threads": 4,
   "fp32_size_mb": 332.1711,
-  "int8_size_mb": 84.6906,
-  "fp32_4t_ms": 100.9277,
-  "int8_4t_ms": 58.2114,
-  "speedup_x": 1.7338,
+  "int8_size_mb": 84.6893,
+  "fp32_4t_ms": 100.9953,
+  "int8_4t_ms": 63.4349,
+  "speedup_x": 1.5921,
   "quant_recipe": {
     "per_channel": true,
     "quant_format": "QDQ",
-    "activation_type": "QInt8",
+    "activation_type": "QUInt8",
     "weight_type": "QInt8",
     "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/RegNetY16GF/model_benchmark_pre.onnx",
-    "quant_pre_process": true
+    "quant_pre_process": true,
+    "skip_first_conv": 0,
+    "nodes_to_quantize": null
   }
 }

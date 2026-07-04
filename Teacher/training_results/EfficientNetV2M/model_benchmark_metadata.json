@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-06-23T19:23:31.858431",
+  "exported_at": "2026-06-24T18:51:20.012887",
   "model": "EfficientNetV2M",
   "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/EfficientNetV2M",
   "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/EfficientNetV2M/best_model.pth",

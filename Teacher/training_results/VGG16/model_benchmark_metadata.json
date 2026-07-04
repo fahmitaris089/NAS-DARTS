@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-06-23T19:30:59.634422",
+  "exported_at": "2026-06-24T18:53:43.016040",
   "model": "VGG16",
   "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/VGG16",
   "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/VGG16/best_model.pth",
