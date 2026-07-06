@@ -1,0 +1,21 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.20_C10_cells10_stem8_last_t20_a05_lr1e4_e160",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.20_C10_cells10_stem8_last_t20_a05_lr1e4_e160/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.20_C10_cells10_stem8_last_t20_a05_lr1e4_e160/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/preprocessed_results",
+  "threads": 4,
+  "fp32_size_mb": 2.3537,
+  "int8_size_mb": 0.8493,
+  "fp32_4t_ms": 1.351,
+  "int8_4t_ms": 1.1958,
+  "speedup_x": 1.1298,
+  "quant_recipe": {
+    "per_channel": true,
+    "quant_format": "QDQ",
+    "activation_type": "QUInt8",
+    "weight_type": "QInt8",
+    "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.20_C10_cells10_stem8_last_t20_a05_lr1e4_e160/model_benchmark_pre.onnx",
+    "quant_pre_process": true,
+    "num_calib_images": 200
+  }
+}

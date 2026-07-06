@@ -1,0 +1,26 @@
+{
+  "num_test_samples": 834,
+  "accuracy": {
+    "c12": 0.9940047961630696,
+    "mobilenet": 0.9964028776978417,
+    "effv2m": 1.0,
+    "resnet50": 1.0
+  },
+  "c12_error_count": 5,
+  "c12_errors_teacher_all_correct": 5,
+  "c12_errors_mobilenet_correct": 3,
+  "c12_errors_true_in_top5": 4,
+  "c12_errors_low_margin": 1,
+  "c12_errors_all_models_wrong": 0,
+  "overlap_error_counts": {
+    "c12_and_mobilenet": 2,
+    "c12_and_effv2m": 0,
+    "c12_and_resnet50": 0
+  },
+  "low_margin_threshold": 0.1,
+  "recommendations": [
+    "Teachers solve all C12 errors; prioritize hard-sample KD, margin KD, or top-k distillation.",
+    "MobileNet solves some C12 errors; compare MobileNet/C12 features or try multi-teacher KD.",
+    "Some true labels are in C12 top-5; margin-ranking or ArcFace/SupCon fine-tuning is promising."
+  ]
+}

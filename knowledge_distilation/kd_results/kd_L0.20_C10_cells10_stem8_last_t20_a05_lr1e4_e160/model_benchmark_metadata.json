@@ -1,0 +1,27 @@
+{
+  "exported_at": "2026-07-06T13:15:44.474603",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.20_C10_cells10_stem8_last_t20_a05_lr1e4_e160",
+  "model_path": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.20_C10_cells10_stem8_last_t20_a05_lr1e4_e160/best_model.pth",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.20_C10_cells10_stem8_last_t20_a05_lr1e4_e160/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.20_C10_cells10_stem8_last_t20_a05_lr1e4_e160/model_benchmark_int8_static.onnx",
+  "input_size": 224,
+  "opset": 13,
+  "num_classes": 834,
+  "c_init": 10,
+  "num_cells": 10,
+  "stem_downsample": 8,
+  "reduction_indices": [
+    3,
+    7
+  ],
+  "auxiliary": false,
+  "fp32_size_mb": 2.3537,
+  "int8_size_mb": 0.8493,
+  "backend": "onnxruntime",
+  "kd_config": {
+    "teacher_arch": "efficientnet_v2_m",
+    "temperature": 20.0,
+    "alpha": 0.5,
+    "epochs": 160
+  }
+}

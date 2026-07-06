@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Tuple, Dict, List
 
 import torch
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader, Subset, Sampler
 from torchvision import transforms
 from PIL import Image
 
@@ -64,7 +64,9 @@ def get_transforms(split="train", input_size=INPUT_SIZE,
         input_size:     resize target (224)
         use_augmentation: enable augmentation for train
         cutout_length:  CutOut patch size (0 = disabled)
-        augmentation_policy: "v1_legacy" (with horizontal flip) or "v2_multi_distance" (no flip, more aggressive)
+        augmentation_policy: "v1_legacy" (with horizontal flip), "v2_multi_distance"
+                             (no flip, more aggressive), or "v3_no_flip_light"
+                             (no flip, mild fine-tuning/KD policy)
     """
     common_tail = [
         transforms.ToTensor(),
@@ -86,6 +88,20 @@ def get_transforms(split="train", input_size=INPUT_SIZE,
                     scale=(0.78, 1.28),      # Wider range (was 0.95-1.05) to simulate distance variation
                 ),
                 transforms.ColorJitter(brightness=0.20, contrast=0.15),  # Increased from 0.15/0.1
+                *common_tail,
+            ]
+        elif augmentation_policy == "v3_no_flip_light":
+            # Augmentation v3: light fine-tuning/KD policy.
+            # No horizontal flip, mild geometry only, and mild photometric jitter.
+            aug_list = [
+                transforms.Resize((input_size, input_size)),
+                transforms.RandomRotation(degrees=5),
+                transforms.RandomAffine(
+                    degrees=0,
+                    translate=(0.03, 0.03),
+                    scale=(0.97, 1.08),
+                ),
+                transforms.ColorJitter(brightness=0.08, contrast=0.05),
                 *common_tail,
             ]
         else:
@@ -131,6 +147,60 @@ class PalmVeinDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         return image, label
+
+
+class PKBatchSampler(Sampler):
+    """
+    Class-balanced sampler for metric/relation KD.
+
+    Each batch contains P identities and K samples per identity. This creates
+    genuine positive pairs inside the batch while retaining many negative pairs.
+    """
+
+    def __init__(self, samples, p_classes=16, k_samples=4, seed=SEED, drop_last=True):
+        if p_classes <= 0 or k_samples <= 0:
+            raise ValueError("p_classes and k_samples must be positive integers")
+
+        self.samples = samples
+        self.p_classes = int(p_classes)
+        self.k_samples = int(k_samples)
+        self.seed = int(seed)
+        self.drop_last = bool(drop_last)
+        self.batch_size = self.p_classes * self.k_samples
+
+        label_to_indices = {}
+        for idx, (_, label) in enumerate(samples):
+            label_to_indices.setdefault(int(label), []).append(idx)
+        if len(label_to_indices) < self.p_classes:
+            raise ValueError(
+                f"PK sampler needs at least {self.p_classes} classes, "
+                f"but dataset has {len(label_to_indices)}"
+            )
+        self.label_to_indices = label_to_indices
+        self.labels = sorted(label_to_indices.keys())
+        n_full_batches = len(samples) // self.batch_size
+        self.num_batches = n_full_batches if drop_last else max(1, n_full_batches)
+        self.epoch = 0
+
+    def __iter__(self):
+        rng = random.Random(self.seed + self.epoch)
+        self.epoch += 1
+        labels = self.labels[:]
+
+        for _ in range(self.num_batches):
+            chosen_labels = rng.sample(labels, self.p_classes)
+            batch = []
+            for label in chosen_labels:
+                indices = self.label_to_indices[label]
+                if len(indices) >= self.k_samples:
+                    batch.extend(rng.sample(indices, self.k_samples))
+                else:
+                    batch.extend(rng.choices(indices, k=self.k_samples))
+            rng.shuffle(batch)
+            yield batch
+
+    def __len__(self):
+        return self.num_batches
 
 
 # ─── Build helpers ───────────────────────────────────────────────────────────
@@ -268,6 +338,10 @@ def create_retrain_dataloaders(
     use_augmentation=True,
     cutout_length=0,
     augmentation_policy="v1_legacy",
+    sampler_type="random",
+    pk_p=16,
+    pk_k=4,
+    seed=SEED,
 ):
     """
     Create DataLoaders for retrain phase.
@@ -276,7 +350,11 @@ def create_retrain_dataloaders(
     Same val/test as teacher for fair comparison.
 
     Args:
-        augmentation_policy: "v1_legacy" (with horizontal flip) or "v2_multi_distance" (no flip)
+        augmentation_policy: "v1_legacy" (with horizontal flip), "v2_multi_distance" (no flip),
+                             or "v3_no_flip_light" (no flip, mild fine-tuning/KD policy)
+        sampler_type: "random" for standard shuffled batches, or "pk" for P*K identity-balanced batches
+        pk_p: number of identities per PK batch
+        pk_k: number of samples per identity in PK batch
 
     Returns: (train_loader, val_loader, test_loader, info)
     """
@@ -299,6 +377,9 @@ def create_retrain_dataloaders(
     print(f"  Classes: {num_classes}")
     print(f"  Augment: {'ON' if use_augmentation else 'OFF'}")
     print(f"  Aug Policy: {augmentation_policy}")
+    print(f"  Train sampler: {sampler_type}")
+    if sampler_type == "pk":
+        print(f"  PK sampler: P={pk_p}, K={pk_k}, effective batch={pk_p * pk_k}")
     if cutout_length > 0:
         print(f"  CutOut : {cutout_length}px")
 
@@ -309,10 +390,30 @@ def create_retrain_dataloaders(
     val_ds = PalmVeinDataset(val_samples, eval_tf)
     test_ds = PalmVeinDataset(test_samples, eval_tf)
 
-    train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=True, drop_last=True,
-    )
+    if sampler_type == "random":
+        train_loader = DataLoader(
+            train_ds, batch_size=batch_size, shuffle=True,
+            num_workers=num_workers, pin_memory=True, drop_last=True,
+        )
+    elif sampler_type == "pk":
+        if pk_p * pk_k != batch_size:
+            raise ValueError(
+                f"PK sampler requires pk_p * pk_k == batch_size; "
+                f"got {pk_p} * {pk_k} = {pk_p * pk_k}, batch_size={batch_size}"
+            )
+        pk_sampler = PKBatchSampler(
+            train_samples,
+            p_classes=pk_p,
+            k_samples=pk_k,
+            seed=seed,
+            drop_last=True,
+        )
+        train_loader = DataLoader(
+            train_ds, batch_sampler=pk_sampler,
+            num_workers=num_workers, pin_memory=True,
+        )
+    else:
+        raise ValueError(f"Unknown sampler_type: {sampler_type}. Use 'random' or 'pk'.")
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False,
         num_workers=num_workers, pin_memory=True,
@@ -328,6 +429,9 @@ def create_retrain_dataloaders(
         "train_size": len(train_samples),
         "val_size": len(val_samples),
         "test_size": len(test_samples),
+        "sampler_type": sampler_type,
+        "pk_p": pk_p if sampler_type == "pk" else None,
+        "pk_k": pk_k if sampler_type == "pk" else None,
     }
 
     return train_loader, val_loader, test_loader, info

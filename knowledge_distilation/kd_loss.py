@@ -32,6 +32,8 @@ Formula Hinton KD (equation 4 di paper):
   sehingga tanpa faktor ini kontribusi KD mengecil saat T besar.
 """
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -154,6 +156,513 @@ class SoftCEKDLoss(nn.Module):
         breakdown = {
             "loss_ce"    : F.cross_entropy(logits_student, targets).item(),
             "loss_total" : loss_total.item(),
+        }
+        return loss_total, breakdown
+
+
+# ─── 3. Biometric representation KD losses ──────────────────────────────────
+
+class PairwiseRelationKDLoss(nn.Module):
+    """
+    Match teacher/student pairwise cosine-similarity structure within a batch.
+
+    This is dimension-safe: student and teacher embeddings may have different
+    dimensionality because only their [B, B] similarity matrices are compared.
+    """
+
+    def forward(
+        self,
+        student_embeddings: torch.Tensor,
+        teacher_embeddings: torch.Tensor,
+    ) -> torch.Tensor:
+        student_norm = F.normalize(student_embeddings, p=2, dim=1)
+        teacher_norm = F.normalize(teacher_embeddings, p=2, dim=1)
+
+        student_sim = student_norm @ student_norm.t()
+        teacher_sim = teacher_norm @ teacher_norm.t()
+
+        return F.mse_loss(student_sim, teacher_sim)
+
+
+class ProjectedEmbeddingKDLoss(nn.Module):
+    """
+    Project student embeddings to teacher dimensionality and match normalized
+    embeddings. The projection is trainable and should be included in optimizer.
+    """
+
+    def __init__(self, student_dim: int, teacher_dim: int):
+        super().__init__()
+        self.projection = nn.Linear(student_dim, teacher_dim, bias=False)
+
+    def forward(
+        self,
+        student_embeddings: torch.Tensor,
+        teacher_embeddings: torch.Tensor,
+    ) -> torch.Tensor:
+        projected = self.projection(student_embeddings)
+        projected = F.normalize(projected, p=2, dim=1)
+        teacher_norm = F.normalize(teacher_embeddings, p=2, dim=1)
+        return F.mse_loss(projected, teacher_norm)
+
+
+class HybridBiometricKDLoss(nn.Module):
+    """
+    CE + optional pairwise relation KD + optional projected embedding KD +
+    optional logit KD. Intended for biometric/fine-grained identity models.
+    """
+
+    def __init__(
+        self,
+        ce_weight: float = 1.0,
+        relation_weight: float = 0.05,
+        embedding_weight: float = 0.0,
+        logit_kd_weight: float = 0.0,
+        temperature: float = 1.0,
+        label_smoothing: float = 0.0,
+        student_dim: int | None = None,
+        teacher_dim: int | None = None,
+    ):
+        super().__init__()
+        self.ce_weight = ce_weight
+        self.relation_weight = relation_weight
+        self.embedding_weight = embedding_weight
+        self.logit_kd_weight = logit_kd_weight
+
+        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+        self.relation = PairwiseRelationKDLoss()
+        self.logit_kd = HintonKDLoss(
+            temperature=temperature,
+            alpha=0.0,
+            label_smoothing=0.0,
+        )
+
+        if embedding_weight > 0:
+            if student_dim is None or teacher_dim is None:
+                raise ValueError("student_dim and teacher_dim are required when embedding_weight > 0")
+            self.embedding = ProjectedEmbeddingKDLoss(student_dim, teacher_dim)
+        else:
+            self.embedding = None
+
+    def forward(
+        self,
+        logits_student: torch.Tensor,
+        logits_teacher: torch.Tensor,
+        student_embeddings: torch.Tensor,
+        teacher_embeddings: torch.Tensor,
+        targets: torch.Tensor,
+        mix_targets: tuple | None = None,
+    ) -> tuple[torch.Tensor, dict]:
+        if mix_targets is not None:
+            targets_a, targets_b, lam = mix_targets
+            loss_ce = lam * self.ce(logits_student, targets_a) + \
+                      (1.0 - lam) * self.ce(logits_student, targets_b)
+        else:
+            loss_ce = self.ce(logits_student, targets)
+
+        zero = logits_student.new_tensor(0.0)
+        loss_relation = self.relation(student_embeddings, teacher_embeddings) \
+            if self.relation_weight > 0 else zero
+
+        loss_embedding = self.embedding(student_embeddings, teacher_embeddings) \
+            if self.embedding is not None and self.embedding_weight > 0 else zero
+
+        if self.logit_kd_weight > 0:
+            loss_logit_kd, logit_breakdown = self.logit_kd(logits_student, logits_teacher, targets)
+            loss_logit_kd = loss_logit_kd
+            loss_kl = logits_student.new_tensor(logit_breakdown.get("loss_kl", 0.0))
+        else:
+            loss_logit_kd = zero
+            loss_kl = zero
+
+        loss_total = (
+            self.ce_weight * loss_ce +
+            self.relation_weight * loss_relation +
+            self.embedding_weight * loss_embedding +
+            self.logit_kd_weight * loss_logit_kd
+        )
+
+        breakdown = {
+            "loss_ce": loss_ce.item(),
+            "loss_relation": loss_relation.item(),
+            "loss_embedding": loss_embedding.item(),
+            "loss_logit_kd": loss_logit_kd.item(),
+            "loss_kl": loss_kl.item(),
+            "loss_kd": (
+                self.relation_weight * loss_relation +
+                self.embedding_weight * loss_embedding +
+                self.logit_kd_weight * loss_logit_kd
+            ).item(),
+            "loss_total": loss_total.item(),
+        }
+        return loss_total, breakdown
+
+
+class HardTopKMarginKDLoss(nn.Module):
+    """
+    Hard-sample KD for fine-grained identity boundaries.
+
+    The teacher provides a compact top-k distribution, while a margin-ranking
+    term pushes the true class logit above the student's best wrong class.
+    Hard samples are weighted online from the current student batch.
+    """
+
+    def __init__(
+        self,
+        ce_weight: float = 1.0,
+        topk_k: int = 5,
+        topk_weight: float = 0.05,
+        margin_weight: float = 0.10,
+        margin_m: float = 0.10,
+        hard_weight: float = 2.0,
+        hard_margin_threshold: float = 0.20,
+        teacher_conf_threshold: float = 0.50,
+        temperature: float = 2.0,
+        label_smoothing: float = 0.0,
+    ):
+        super().__init__()
+        if topk_k <= 0:
+            raise ValueError("topk_k must be positive")
+        self.ce_weight = float(ce_weight)
+        self.topk_k = int(topk_k)
+        self.topk_weight = float(topk_weight)
+        self.margin_weight = float(margin_weight)
+        self.margin_m = float(margin_m)
+        self.hard_weight = float(hard_weight)
+        self.hard_margin_threshold = float(hard_margin_threshold)
+        self.teacher_conf_threshold = float(teacher_conf_threshold)
+        self.temperature = float(temperature)
+        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing, reduction="none")
+
+    @staticmethod
+    def _weighted_mean(values: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+        return (values * weights).sum() / weights.sum().clamp_min(1e-8)
+
+    def forward(
+        self,
+        logits_student: torch.Tensor,
+        logits_teacher: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict]:
+        num_classes = logits_student.size(1)
+        k = min(self.topk_k, num_classes)
+        batch_indices = torch.arange(targets.size(0), device=targets.device)
+
+        with torch.no_grad():
+            teacher_probs_full = F.softmax(logits_teacher, dim=1)
+            teacher_conf, _ = teacher_probs_full.max(dim=1)
+            teacher_top_values, teacher_top_indices = torch.topk(logits_teacher, k=k, dim=1)
+
+            student_pred = logits_student.argmax(dim=1)
+            sorted_student = torch.argsort(logits_student, dim=1, descending=True)
+            true_rank = (sorted_student == targets.unsqueeze(1)).nonzero(as_tuple=False)[:, 1] + 1
+
+        topk_student_logits = logits_student.gather(1, teacher_top_indices)
+        teacher_top_dist = F.softmax(teacher_top_values / self.temperature, dim=1)
+        student_top_log_dist = F.log_softmax(topk_student_logits / self.temperature, dim=1)
+        topk_kd_per_sample = F.kl_div(
+            student_top_log_dist,
+            teacher_top_dist,
+            reduction="none",
+        ).sum(dim=1) * (self.temperature ** 2)
+
+        true_logits = logits_student[batch_indices, targets]
+        masked_logits = logits_student.masked_fill(
+            F.one_hot(targets, num_classes=num_classes).bool(),
+            float("-inf"),
+        )
+        best_wrong_logits = masked_logits.max(dim=1).values
+        student_margin = true_logits - best_wrong_logits
+        margin_per_sample = F.relu(self.margin_m - student_margin)
+
+        ce_per_sample = self.ce(logits_student, targets)
+
+        hard_mask = (
+            (student_pred != targets)
+            | (true_rank > 1)
+            | (student_margin < self.hard_margin_threshold)
+        )
+        teacher_valid = teacher_conf >= self.teacher_conf_threshold
+        hard_mask = hard_mask & teacher_valid
+
+        weights = torch.ones_like(ce_per_sample)
+        weights = torch.where(hard_mask, weights * self.hard_weight, weights)
+
+        loss_ce = self._weighted_mean(ce_per_sample, weights)
+        loss_topk = self._weighted_mean(topk_kd_per_sample, weights)
+        loss_margin = self._weighted_mean(margin_per_sample, weights)
+
+        loss_total = (
+            self.ce_weight * loss_ce
+            + self.topk_weight * loss_topk
+            + self.margin_weight * loss_margin
+        )
+
+        breakdown = {
+            "loss_ce": loss_ce.item(),
+            "loss_topk": loss_topk.item(),
+            "loss_margin": loss_margin.item(),
+            "hard_ratio": hard_mask.float().mean().item(),
+            "avg_true_rank": true_rank.float().mean().item(),
+            "loss_kd": (self.topk_weight * loss_topk + self.margin_weight * loss_margin).item(),
+            "loss_total": loss_total.item(),
+        }
+        return loss_total, breakdown
+
+
+class ConservativeAnchorKDLoss(nn.Module):
+    """
+    Conservative KD for an already strong student.
+
+    The student learns gently from the high-accuracy teacher while a frozen
+    anchor student (usually the original retrain checkpoint) prevents broad
+    decision-boundary drift. This is useful when the baseline is already
+    99%+ and aggressive KD tends to trade old errors for new errors.
+    """
+
+    def __init__(
+        self,
+        ce_weight: float = 1.0,
+        topk_k: int = 5,
+        topk_weight: float = 0.01,
+        margin_weight: float = 0.05,
+        margin_m: float = 1.0,
+        anchor_weight: float = 0.75,
+        temperature: float = 2.0,
+        anchor_temperature: float = 2.0,
+        label_smoothing: float = 0.0,
+    ):
+        super().__init__()
+        if topk_k <= 0:
+            raise ValueError("topk_k must be positive")
+        if anchor_weight <= 0:
+            raise ValueError("anchor_weight must be positive for conservative KD")
+
+        self.ce_weight = float(ce_weight)
+        self.topk_k = int(topk_k)
+        self.topk_weight = float(topk_weight)
+        self.margin_weight = float(margin_weight)
+        self.margin_m = float(margin_m)
+        self.anchor_weight = float(anchor_weight)
+        self.temperature = float(temperature)
+        self.anchor_temperature = float(anchor_temperature)
+        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+
+    @staticmethod
+    def _temperature_kl(
+        logits_student: torch.Tensor,
+        logits_target: torch.Tensor,
+        temperature: float,
+    ) -> torch.Tensor:
+        log_probs_student = F.log_softmax(logits_student / temperature, dim=1)
+        probs_target = F.softmax(logits_target / temperature, dim=1)
+        return F.kl_div(
+            log_probs_student,
+            probs_target,
+            reduction="batchmean",
+        ) * (temperature ** 2)
+
+    def forward(
+        self,
+        logits_student: torch.Tensor,
+        logits_teacher: torch.Tensor,
+        logits_anchor: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict]:
+        num_classes = logits_student.size(1)
+        k = min(self.topk_k, num_classes)
+        batch_indices = torch.arange(targets.size(0), device=targets.device)
+
+        loss_ce = self.ce(logits_student, targets)
+
+        with torch.no_grad():
+            teacher_top_values, teacher_top_indices = torch.topk(logits_teacher, k=k, dim=1)
+
+        topk_student_logits = logits_student.gather(1, teacher_top_indices)
+        teacher_top_dist = F.softmax(teacher_top_values / self.temperature, dim=1)
+        student_top_log_dist = F.log_softmax(topk_student_logits / self.temperature, dim=1)
+        loss_topk = F.kl_div(
+            student_top_log_dist,
+            teacher_top_dist,
+            reduction="batchmean",
+        ) * (self.temperature ** 2)
+
+        true_logits = logits_student[batch_indices, targets]
+        masked_logits = logits_student.masked_fill(
+            F.one_hot(targets, num_classes=num_classes).bool(),
+            float("-inf"),
+        )
+        best_wrong_logits = masked_logits.max(dim=1).values
+        loss_margin = F.relu(self.margin_m - (true_logits - best_wrong_logits)).mean()
+
+        loss_anchor = self._temperature_kl(
+            logits_student,
+            logits_anchor,
+            self.anchor_temperature,
+        )
+
+        loss_total = (
+            self.ce_weight * loss_ce
+            + self.topk_weight * loss_topk
+            + self.margin_weight * loss_margin
+            + self.anchor_weight * loss_anchor
+        )
+
+        breakdown = {
+            "loss_ce": loss_ce.item(),
+            "loss_topk": loss_topk.item(),
+            "loss_margin": loss_margin.item(),
+            "loss_anchor": loss_anchor.item(),
+            "loss_kd": (
+                self.topk_weight * loss_topk
+                + self.margin_weight * loss_margin
+                + self.anchor_weight * loss_anchor
+            ).item(),
+            "loss_total": loss_total.item(),
+        }
+        return loss_total, breakdown
+
+
+class ConservativeMultiTeacherKDLoss(nn.Module):
+    """
+    Conservative KD with two complementary teachers.
+
+    Teacher 1 is a stable high-accuracy teacher. Teacher 2 is a complementary
+    teacher whose top-k signal is selectively weighted by confidence and
+    agreement with the hard label. A frozen anchor student keeps the model close
+    to the known-good checkpoint.
+    """
+
+    def __init__(
+        self,
+        ce_weight: float = 1.0,
+        topk_k: int = 5,
+        teacher1_weight: float = 0.01,
+        teacher2_weight: float = 0.05,
+        teacher2_conf_threshold: float = 0.05,
+        teacher_agree_bonus: float = 1.5,
+        teacher_disagree_policy: str = "teacher2_only",
+        anchor_weight: float = 0.5,
+        temperature: float = 2.0,
+        anchor_temperature: float = 2.0,
+        label_smoothing: float = 0.0,
+    ):
+        super().__init__()
+        if topk_k <= 0:
+            raise ValueError("topk_k must be positive")
+        if teacher_disagree_policy not in {"conservative", "teacher2_only", "weighted"}:
+            raise ValueError("teacher_disagree_policy must be conservative, teacher2_only, or weighted")
+
+        self.ce_weight = float(ce_weight)
+        self.topk_k = int(topk_k)
+        self.teacher1_weight = float(teacher1_weight)
+        self.teacher2_weight = float(teacher2_weight)
+        self.teacher2_conf_threshold = float(teacher2_conf_threshold)
+        self.teacher_agree_bonus = float(teacher_agree_bonus)
+        self.teacher_disagree_policy = teacher_disagree_policy
+        self.anchor_weight = float(anchor_weight)
+        self.temperature = float(temperature)
+        self.anchor_temperature = float(anchor_temperature)
+        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+
+    @staticmethod
+    def _temperature_kl(
+        logits_student: torch.Tensor,
+        logits_target: torch.Tensor,
+        temperature: float,
+    ) -> torch.Tensor:
+        return F.kl_div(
+            F.log_softmax(logits_student / temperature, dim=1),
+            F.softmax(logits_target / temperature, dim=1),
+            reduction="batchmean",
+        ) * (temperature ** 2)
+
+    @staticmethod
+    def _weighted_mean(values: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+        return (values * weights).sum() / weights.sum().clamp_min(1e-8)
+
+    def _topk_kd_per_sample(
+        self,
+        logits_student: torch.Tensor,
+        logits_teacher: torch.Tensor,
+    ) -> torch.Tensor:
+        k = min(self.topk_k, logits_student.size(1))
+        teacher_top_values, teacher_top_indices = torch.topk(logits_teacher, k=k, dim=1)
+        topk_student_logits = logits_student.gather(1, teacher_top_indices)
+        teacher_top_dist = F.softmax(teacher_top_values / self.temperature, dim=1)
+        student_top_log_dist = F.log_softmax(topk_student_logits / self.temperature, dim=1)
+        return F.kl_div(
+            student_top_log_dist,
+            teacher_top_dist,
+            reduction="none",
+        ).sum(dim=1) * (self.temperature ** 2)
+
+    def forward(
+        self,
+        logits_student: torch.Tensor,
+        logits_teacher1: torch.Tensor,
+        logits_teacher2: torch.Tensor,
+        logits_anchor: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict]:
+        loss_ce = self.ce(logits_student, targets)
+        loss_anchor = self._temperature_kl(
+            logits_student,
+            logits_anchor,
+            self.anchor_temperature,
+        )
+
+        teacher1_topk = self._topk_kd_per_sample(logits_student, logits_teacher1)
+        teacher2_topk = self._topk_kd_per_sample(logits_student, logits_teacher2)
+
+        with torch.no_grad():
+            teacher1_pred = logits_teacher1.argmax(dim=1)
+            teacher2_probs = F.softmax(logits_teacher2, dim=1)
+            teacher2_conf, teacher2_pred = teacher2_probs.max(dim=1)
+
+            teacher1_correct = teacher1_pred == targets
+            teacher2_correct = teacher2_pred == targets
+            teacher2_valid = teacher2_conf >= self.teacher2_conf_threshold
+            teachers_agree_correct = teacher1_correct & teacher2_correct
+
+            teacher2_weights = torch.zeros_like(teacher2_conf)
+            if self.teacher_disagree_policy == "conservative":
+                teacher2_weights = torch.where(teachers_agree_correct, torch.ones_like(teacher2_weights), teacher2_weights)
+            elif self.teacher_disagree_policy == "teacher2_only":
+                teacher2_weights = torch.where(teacher2_valid, torch.ones_like(teacher2_weights), teacher2_weights)
+            else:
+                teacher2_weights = torch.where(teacher2_valid, teacher2_conf, teacher2_weights)
+
+            teacher2_weights = torch.where(
+                teachers_agree_correct & teacher2_valid,
+                teacher2_weights * self.teacher_agree_bonus,
+                teacher2_weights,
+            )
+
+        loss_teacher1 = teacher1_topk.mean()
+        loss_teacher2 = self._weighted_mean(teacher2_topk, teacher2_weights)
+        teacher2_active = (teacher2_weights > 0).float().mean()
+
+        loss_total = (
+            self.ce_weight * loss_ce
+            + self.anchor_weight * loss_anchor
+            + self.teacher1_weight * loss_teacher1
+            + self.teacher2_weight * loss_teacher2
+        )
+
+        breakdown = {
+            "loss_ce": loss_ce.item(),
+            "loss_anchor": loss_anchor.item(),
+            "loss_teacher1_kd": loss_teacher1.item(),
+            "loss_teacher2_kd": loss_teacher2.item(),
+            "teacher2_active": teacher2_active.item(),
+            "teacher2_correct_ratio": teacher2_correct.float().mean().item(),
+            "teacher_agree_correct_ratio": teachers_agree_correct.float().mean().item(),
+            "loss_kd": (
+                self.anchor_weight * loss_anchor
+                + self.teacher1_weight * loss_teacher1
+                + self.teacher2_weight * loss_teacher2
+            ).item(),
+            "loss_total": loss_total.item(),
         }
         return loss_total, breakdown
 
