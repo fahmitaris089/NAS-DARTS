@@ -9,7 +9,7 @@ Training follows teacher's pattern:
   - AdamW optimizer, CosineAnnealing + warmup
   - CrossEntropy with label smoothing
   - Same augmentation + CutOut + DropPath
-  - Best model by val_loss, full test evaluation
+  - Best model by val_loss, best model by val_acc, and last model evaluation
 
 Usage:
     python retrain.py --genotype nas_results/search/genotype_final.json
@@ -285,8 +285,12 @@ def main():
     parser.add_argument("--drop_path_prob", type=float, default=RETRAIN_CFG["drop_path_prob"])
     parser.add_argument("--cutout_length", type=int, default=RETRAIN_CFG["cutout_length"])
     parser.add_argument("--augmentation_policy", type=str, default="v1_legacy",
-                        choices=["v1_legacy", "v2_multi_distance"],
-                        help="Augmentation policy: v1_legacy (with horizontal flip) or v2_multi_distance (no flip)")
+                        choices=["v1_legacy", "v2_multi_distance", "v3_no_flip_light", "v4_robust_light"],
+                        help=(
+                            "Augmentation policy: v1_legacy (with horizontal flip), "
+                            "v2_multi_distance (aggressive no flip), v3_no_flip_light "
+                            "(mild no flip), or v4_robust_light (robust brightness/crop no flip)"
+                        ))
     parser.add_argument("--auxiliary", action="store_true", default=RETRAIN_CFG["auxiliary"])
     parser.add_argument("--no_auxiliary", action="store_true")
     parser.add_argument("--seed", type=int, default=SEED)
@@ -427,6 +431,8 @@ def main():
     # ─── Training Loop ───────────────────────────────────────────────────
     best_val_loss = float("inf")
     best_epoch = 0
+    best_val_acc = -float("inf")
+    best_acc_epoch = 0
     training_start = time.time()
 
     logger.info(f"\n{'='*60}")
@@ -469,14 +475,25 @@ def main():
         ])
         log_file.flush()
 
-        # Save best
+        # Save checkpoints by complementary validation criteria. Keep
+        # best_model.pth as val_loss-based for backward compatibility.
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch
             torch.save(model.state_dict(), save_dir / "best_model.pth")
 
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_acc_epoch = epoch
+            torch.save(model.state_dict(), save_dir / "best_val_acc_model.pth")
+
         # Print
-        marker = " *** BEST" if epoch == best_epoch and val_loss <= best_val_loss else ""
+        markers = []
+        if epoch == best_epoch and val_loss <= best_val_loss:
+            markers.append("BEST_LOSS")
+        if epoch == best_acc_epoch and val_acc >= best_val_acc:
+            markers.append("BEST_ACC")
+        marker = f" *** {'/'.join(markers)}" if markers else ""
         if epoch % 10 == 0 or epoch <= 5 or epoch == args.epochs:
             logger.info(
                 f"  E{epoch:>4}/{args.epochs} │ "
@@ -492,6 +509,7 @@ def main():
     total_time = time.time() - training_start
     logger.info(f"\nTraining completed in {total_time/60:.1f} min")
     logger.info(f"Best val_loss: {best_val_loss:.6f} at epoch {best_epoch}")
+    logger.info(f"Best val_acc : {best_val_acc:.6f} at epoch {best_acc_epoch}")
 
     def load_eval_model(weights_path):
         eval_model = EvalNetwork(
@@ -519,6 +537,9 @@ def main():
 
     test_results["best_epoch"] = best_epoch
     test_results["best_val_loss"] = float(best_val_loss)
+    test_results["best_val_acc_epoch"] = best_acc_epoch
+    test_results["best_val_acc"] = float(best_val_acc)
+    test_results["checkpoint_selection"] = "val_loss"
     test_results["total_params"] = total_params
     test_results["training_time_min"] = float(total_time / 60)
     test_results["model_name"] = "NAS-PDARTS"
@@ -567,7 +588,8 @@ def main():
     with open(save_dir / "classification_report.txt", "w") as f:
         f.write(f"Model: NAS-PDARTS (C_init={C_init}, cells={args.num_cells})\n")
         f.write(f"Parameters: {total_params:,}\n")
-        f.write(f"Best epoch: {best_epoch}\n")
+        f.write(f"Best val_loss epoch: {best_epoch}\n")
+        f.write(f"Best val_acc epoch: {best_acc_epoch}\n")
         f.write(f"Test accuracy: {test_results['accuracy']*100:.2f}%\n\n")
         f.write(cls_report)
 
@@ -591,7 +613,23 @@ def main():
         json.dump(last_results, f, indent=2, default=str)
 
     logger.info(f"    Last model accuracy: {last_results['accuracy']*100:.2f}%")
-    logger.info(f"    Best model accuracy: {test_results['accuracy']*100:.2f}% (epoch {best_epoch})")
+    logger.info(f"    Best val_loss model accuracy: {test_results['accuracy']*100:.2f}% (epoch {best_epoch})")
+
+    # ─── Also evaluate best-val-accuracy model ──────────────────────────
+    logger.info(f"\n── Evaluating best val_acc model (epoch {best_acc_epoch}) ──")
+    best_acc_eval_model = load_eval_model(save_dir / "best_val_acc_model.pth")
+    best_acc_results, _, _, _, _, _ = evaluate_test(
+        best_acc_eval_model, test_loader, device, num_classes
+    )
+    best_acc_results["model_name"] = "NAS-PDARTS"
+    best_acc_results["epoch"] = best_acc_epoch
+    best_acc_results["best_val_acc"] = float(best_val_acc)
+    best_acc_results["checkpoint_selection"] = "val_acc"
+    with open(save_dir / "best_val_acc_model_results.json", "w") as f:
+        json.dump(best_acc_results, f, indent=2, default=str)
+
+    logger.info(f"    Best val_acc model accuracy: {best_acc_results['accuracy']*100:.2f}%")
+    logger.info(f"    Best val_acc checkpoint    : {save_dir / 'best_val_acc_model.pth'}")
 
     # ─── Comparison with Teacher ─────────────────────────────────────────
     teacher_csv = Path(__file__).resolve().parent.parent / "Teacher" / "training_results" / "comparison_table.csv"
@@ -614,13 +652,21 @@ def main():
     logger.info(f"\n{'='*60}")
     logger.info(f"  DONE: NAS-PDARTS Retrain")
     logger.info(f"  Params      : {total_params:,}")
-    logger.info(f"  Best epoch  : {best_epoch}")
-    logger.info(f"  Test acc    : {test_results['accuracy']*100:.2f}%")
+    logger.info(f"  Best val_loss epoch : {best_epoch}")
+    logger.info(f"  Best val_acc epoch  : {best_acc_epoch}")
+    logger.info(f"  Best val_loss test  : {test_results['accuracy']*100:.2f}%")
+    logger.info(f"  Best val_acc test   : {best_acc_results['accuracy']*100:.2f}%")
+    logger.info(f"  Last model test     : {last_results['accuracy']*100:.2f}%")
     logger.info(f"  Output      : {save_dir}")
     logger.info(f"  Train time  : {total_time/60:.1f} min")
     logger.info(f"{'='*60}")
     logger.info(f"\nNext step: Knowledge Distillation")
+    logger.info(f"  # val_loss checkpoint")
     logger.info(f"  python kd_train.py --student_weights {save_dir / 'best_model.pth'}")
+    logger.info(f"  # val_acc checkpoint")
+    logger.info(f"  python kd_train.py --student_weights {save_dir / 'best_val_acc_model.pth'}")
+    logger.info(f"  # final epoch checkpoint")
+    logger.info(f"  python kd_train.py --student_weights {save_dir / 'last_model.pth'}")
 
 
 if __name__ == "__main__":

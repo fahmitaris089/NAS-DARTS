@@ -1,9 +1,9 @@
 {
-  "exported_at": "2026-06-24T14:40:34.146442",
+  "exported_at": "2026-07-08T12:17:38.968344",
   "model": "MobileNetV3Small",
   "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/MobileNetV3Small",
   "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/MobileNetV3Small/best_model.pth",
-  "onnx_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/MobileNetV3Small/model_benchmark_fixed_bn30.onnx",
+  "onnx_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/MobileNetV3Small/model_benchmark_skip7.onnx",
   "num_classes": 834,
   "input_size": 224,
   "opset": 13,

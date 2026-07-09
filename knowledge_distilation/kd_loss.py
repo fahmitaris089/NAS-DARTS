@@ -667,6 +667,169 @@ class ConservativeMultiTeacherKDLoss(nn.Module):
         return loss_total, breakdown
 
 
+class TopKDLoss(nn.Module):
+    """
+    Top-scaled logit KD for high-class-count fine-grained recognition.
+
+    Lite mode uses CE + a Top-K decoupled logit alignment:
+      - teacher Top-K logits are amplified by rank-dependent scaling,
+      - the ground-truth class is forced into the Top-K set when missing,
+      - student aligns to the scaled Top-K distribution plus the non-Top-K
+        probability mass.
+
+    Full mode adds symmetric logit-level contrastive alignment between each
+    student sample and its matching teacher sample in the batch.
+    """
+
+    def __init__(
+        self,
+        mode: str = "lite",
+        topkd_k: int = 20,
+        ce_weight: float = 1.0,
+        tdl_weight: float = 0.5,
+        contrast_weight: float = 0.05,
+        scale: float = 2.0,
+        temperature: float = 20.0,
+        include_gt: bool = True,
+        label_smoothing: float = 0.0,
+    ):
+        super().__init__()
+        if mode not in {"lite", "full"}:
+            raise ValueError("TopKDLoss mode must be 'lite' or 'full'")
+        if topkd_k <= 0:
+            raise ValueError("topkd_k must be positive")
+        if scale < 1.0:
+            raise ValueError("topkd_scale should be >= 1.0")
+
+        self.mode = mode
+        self.topkd_k = int(topkd_k)
+        self.ce_weight = float(ce_weight)
+        self.tdl_weight = float(tdl_weight)
+        self.contrast_weight = float(contrast_weight)
+        self.scale = float(scale)
+        self.temperature = float(temperature)
+        self.include_gt = bool(include_gt)
+        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+
+    def _scaled_teacher_topk(
+        self,
+        logits_teacher: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        num_classes = logits_teacher.size(1)
+        k = min(self.topkd_k, num_classes)
+        top_values, top_indices = torch.topk(logits_teacher, k=k, dim=1)
+
+        if self.include_gt:
+            with torch.no_grad():
+                contains_gt = (top_indices == targets.unsqueeze(1)).any(dim=1)
+                missing_gt = ~contains_gt
+            if missing_gt.any():
+                top_indices = top_indices.clone()
+                top_values = top_values.clone()
+                top_indices[missing_gt, -1] = targets[missing_gt]
+                top_values[missing_gt, -1] = logits_teacher[missing_gt, targets[missing_gt]]
+
+        rank_weights = torch.linspace(
+            self.scale,
+            1.0,
+            steps=k,
+            device=logits_teacher.device,
+            dtype=logits_teacher.dtype,
+        ).unsqueeze(0)
+        scaled_top_values = top_values * rank_weights
+
+        top_mask = torch.zeros_like(logits_teacher, dtype=torch.bool)
+        top_mask.scatter_(1, top_indices, True)
+
+        scaled_teacher_full = logits_teacher.clone()
+        scaled_teacher_full.scatter_(1, top_indices, scaled_top_values)
+        return top_indices, scaled_top_values, top_mask, scaled_teacher_full
+
+    def _tdl_loss(
+        self,
+        logits_student: torch.Tensor,
+        logits_teacher: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict, torch.Tensor]:
+        top_indices, scaled_top_values, top_mask, scaled_teacher_full = self._scaled_teacher_topk(
+            logits_teacher, targets
+        )
+
+        top_student_logits = logits_student.gather(1, top_indices)
+        teacher_top_dist = F.softmax(scaled_top_values / self.temperature, dim=1)
+        student_top_log_dist = F.log_softmax(top_student_logits / self.temperature, dim=1)
+        loss_topk_kl = F.kl_div(
+            student_top_log_dist,
+            teacher_top_dist,
+            reduction="batchmean",
+        ) * (self.temperature ** 2)
+
+        loss_topk_cos = (
+            1.0 - F.cosine_similarity(top_student_logits, scaled_top_values, dim=1)
+        ).mean()
+
+        student_probs = F.softmax(logits_student / self.temperature, dim=1)
+        teacher_probs = F.softmax(scaled_teacher_full / self.temperature, dim=1)
+        non_top_mask = ~top_mask
+        student_non_top_mass = (student_probs * non_top_mask).sum(dim=1)
+        teacher_non_top_mass = (teacher_probs * non_top_mask).sum(dim=1)
+        loss_non_top = F.mse_loss(student_non_top_mass, teacher_non_top_mass)
+
+        loss_tdl = loss_topk_kl + loss_topk_cos + loss_non_top
+        breakdown = {
+            "loss_topk": loss_topk_kl.item(),
+            "loss_topk_cos": loss_topk_cos.item(),
+            "loss_non_top": loss_non_top.item(),
+            "loss_tdl": loss_tdl.item(),
+        }
+        return loss_tdl, breakdown, scaled_teacher_full
+
+    def _contrastive_loss(
+        self,
+        logits_student: torch.Tensor,
+        scaled_teacher_full: torch.Tensor,
+    ) -> torch.Tensor:
+        student_norm = F.normalize(logits_student, p=2, dim=1)
+        teacher_norm = F.normalize(scaled_teacher_full.detach(), p=2, dim=1)
+        logits_st = student_norm @ teacher_norm.t() / max(self.temperature, 1e-6)
+        labels = torch.arange(logits_student.size(0), device=logits_student.device)
+        loss_st = F.cross_entropy(logits_st, labels)
+        loss_ts = F.cross_entropy(logits_st.t(), labels)
+        return 0.5 * (loss_st + loss_ts)
+
+    def forward(
+        self,
+        logits_student: torch.Tensor,
+        logits_teacher: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict]:
+        loss_ce = self.ce(logits_student, targets)
+        loss_tdl, tdl_breakdown, scaled_teacher_full = self._tdl_loss(
+            logits_student, logits_teacher, targets
+        )
+
+        if self.mode == "full" and self.contrast_weight > 0:
+            loss_contrast = self._contrastive_loss(logits_student, scaled_teacher_full)
+        else:
+            loss_contrast = logits_student.new_tensor(0.0)
+
+        loss_topkd = self.tdl_weight * loss_tdl + self.contrast_weight * loss_contrast
+        loss_total = self.ce_weight * loss_ce + loss_topkd
+
+        breakdown = {
+            "loss_ce": loss_ce.item(),
+            "loss_tdl": loss_tdl.item(),
+            "loss_contrast": loss_contrast.item(),
+            "loss_topkd": loss_topkd.item(),
+            "loss_kd": loss_topkd.item(),
+            "loss_total": loss_total.item(),
+            "topkd_k": float(min(self.topkd_k, logits_student.size(1))),
+            **tdl_breakdown,
+        }
+        return loss_total, breakdown
+
+
 # ─── 3. KD Loss with Auxiliary (untuk student yang masih pakai aux head) ─────
 
 class KDLossWithAuxiliary(nn.Module):

@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-07-05T02:54:02.284860",
+  "best_epoch": 5,
+  "best_val_acc": 0.9856,
+  "initial_val_acc": 0.9832,
+  "initial_val_loss": 0.3146,
+  "initial_test_acc": 0.994,
+  "initial_test_loss": 0.3011,
+  "test_acc": 0.9928,
+  "test_loss": 0.2796,
+  "test_auc": 0.9999884846024741,
+  "test_eer_pct": 0.0012,
+  "kd_config": {
+    "teacher": "efficientnet_v2_m",
+    "kd_method": "pairwise",
+    "temperature": 1.0,
+    "alpha": 0.3,
+    "kd_weight": 0.7,
+    "ce_weight": 0.2,
+    "relation_weight": 5.0,
+    "embedding_weight": 0.0,
+    "logit_kd_weight": 0.0,
+    "freeze_bn": true,
+    "train_sampler": "pk",
+    "pk_p": 16,
+    "pk_k": 4,
+    "epochs": 80,
+    "lr": 2e-07
+  }
+}

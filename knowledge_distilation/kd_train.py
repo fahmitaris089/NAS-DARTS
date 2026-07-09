@@ -66,6 +66,7 @@ from kd_loss import (
     HardTopKMarginKDLoss,
     ConservativeAnchorKDLoss,
     ConservativeMultiTeacherKDLoss,
+    TopKDLoss,
 )
 from model_eval import EvalNetwork
 from palm_vein_dataset import create_retrain_dataloaders
@@ -139,6 +140,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                         choices=[
                             "hinton", "pairwise", "embedding", "hybrid",
                             "hard_topk", "conservative", "conservative_multiteacher",
+                            "topkd",
                         ],
                         help="KD loss method. 'hinton' preserves the original logit KD path.")
     parser.add_argument("--ce_weight", type=float, default=cfg.ce_weight,
@@ -180,16 +182,43 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     parser.add_argument("--teacher_disagree_policy", default=cfg.teacher_disagree_policy,
                         choices=["conservative", "teacher2_only", "weighted"],
                         help="How to weight teacher2 when teacher1 and teacher2 disagree")
+    parser.add_argument("--topkd_mode", default=cfg.topkd_mode,
+                        choices=["lite", "full"],
+                        help="Top-KD mode: lite=TSM+TDL, full=TSM+TDL+contrastive")
+    parser.add_argument("--topkd_k", type=int, default=cfg.topkd_k,
+                        help="Top-K logits used by Top-KD")
+    parser.add_argument("--topkd_ce_weight", type=float, default=cfg.topkd_ce_weight,
+                        help="CE weight for Top-KD")
+    parser.add_argument("--topkd_tdl_weight", type=float, default=cfg.topkd_tdl_weight,
+                        help="Top-K decoupled loss weight")
+    parser.add_argument("--topkd_contrast_weight", type=float, default=cfg.topkd_contrast_weight,
+                        help="Top-KD contrastive loss weight")
+    parser.add_argument("--topkd_scale", type=float, default=cfg.topkd_scale,
+                        help="Rank-dependent Top-K teacher logit scale")
+    parser.add_argument("--topkd_temperature", type=float, default=cfg.topkd_temperature,
+                        help="Top-KD temperature. 0 means follow --temperature")
+    parser.add_argument("--no_topkd_include_gt", action="store_true",
+                        help="Do not force hard-label class into teacher Top-K set")
     parser.add_argument("--epochs",      type=int,   default=cfg.epochs)
     parser.add_argument("--lr",          type=float, default=cfg.lr)
     parser.add_argument("--lr_min",      type=float, default=cfg.lr_min)
     parser.add_argument("--weight_decay",type=float, default=cfg.weight_decay)
     parser.add_argument("--batch_size",  type=int,   default=cfg.batch_size)
+    parser.add_argument("--num_workers", type=int,   default=cfg.num_workers,
+                        help="DataLoader workers. Use 0 on Windows/Python 3.14 if workers crash.")
     parser.add_argument("--cutout_length", type=int, default=cfg.cutout_length,
                         help="CutOut patch size for train augmentation (0=disable)")
     parser.add_argument("--augmentation_policy", default=cfg.augmentation_policy,
-                        choices=["v1_legacy", "v2_multi_distance", "v3_no_flip_light"],
-                        help="Train augmentation policy passed to create_retrain_dataloaders")
+                        choices=[
+                            "v1_legacy",
+                            "v2_multi_distance",
+                            "v3_no_flip_light",
+                            "v4_robust_light",
+                        ],
+                        help=(
+                            "Train augmentation policy: v1_legacy, v2_multi_distance, "
+                            "v3_no_flip_light, or v4_robust_light"
+                        ))
     parser.add_argument("--train_sampler", default=cfg.train_sampler,
                         choices=["random", "pk"],
                         help="Train sampler: random shuffle (default) or PK class-balanced batches")
@@ -228,6 +257,12 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                         help="Prob of choosing CutMix over MixUp (default: 0.5)")
     parser.add_argument("--no_mix",       action="store_true",
                         help="Disable MixUp and CutMix entirely")
+    parser.add_argument("--save_epoch_checkpoints", action="store_true",
+                        help="Save periodic epoch checkpoints for SWA/checkpoint averaging")
+    parser.add_argument("--checkpoint_start_epoch", type=int, default=80,
+                        help="First epoch to save when --save_epoch_checkpoints is enabled")
+    parser.add_argument("--checkpoint_interval", type=int, default=10,
+                        help="Save every N epochs after --checkpoint_start_epoch")
 
     args = parser.parse_args()
 
@@ -262,6 +297,14 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.teacher2_conf_threshold = args.teacher2_conf_threshold
     cfg.teacher_agree_bonus = args.teacher_agree_bonus
     cfg.teacher_disagree_policy = args.teacher_disagree_policy
+    cfg.topkd_mode          = args.topkd_mode
+    cfg.topkd_k             = args.topkd_k
+    cfg.topkd_ce_weight     = args.topkd_ce_weight
+    cfg.topkd_tdl_weight    = args.topkd_tdl_weight
+    cfg.topkd_contrast_weight = args.topkd_contrast_weight
+    cfg.topkd_scale         = args.topkd_scale
+    cfg.topkd_temperature   = args.topkd_temperature
+    cfg.topkd_include_gt    = not args.no_topkd_include_gt
     cfg.epochs              = args.epochs
     cfg.lr                  = args.lr
     cfg.lr_min              = args.lr_min
@@ -297,6 +340,11 @@ def parse_args(cfg: KDConfig) -> KDConfig:
         cfg.amp = False
     cfg.no_pretrained_student = args.no_pretrained_student
     cfg.freeze_bn = args.freeze_bn
+    cfg.save_epoch_checkpoints = args.save_epoch_checkpoints
+    cfg.checkpoint_start_epoch = args.checkpoint_start_epoch
+    cfg.checkpoint_interval = args.checkpoint_interval
+    if cfg.save_epoch_checkpoints and cfg.checkpoint_interval <= 0:
+        parser.error("--checkpoint_interval must be > 0 when --save_epoch_checkpoints is enabled")
 
     # MixUp / CutMix
     if args.no_mix:
@@ -308,7 +356,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
         cfg.mix_prob        = args.mix_prob
         cfg.mix_switch_prob = args.mix_switch_prob
 
-    if cfg.kd_method in {"hard_topk", "conservative", "conservative_multiteacher"} and (cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0):
+    if cfg.kd_method in {"hard_topk", "conservative", "conservative_multiteacher", "topkd"} and (cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0):
         print(
             f"WARNING: {cfg.kd_method} KD requires unmixed identity targets; "
             "forcing MixUp/CutMix off. Pass --no_mix to silence this warning."
@@ -863,6 +911,7 @@ def train_one_epoch(
     total_topk = total_margin = total_hard_ratio = total_true_rank = 0.0
     total_anchor = 0.0
     total_teacher1_kd = total_teacher2_kd = total_teacher2_active = 0.0
+    total_tdl = total_contrast = total_topkd = 0.0
     correct = n_samples = 0
 
     for batch_idx, (images, targets) in enumerate(loader):
@@ -878,7 +927,7 @@ def train_one_epoch(
         with torch.no_grad():
             logits_anchor = None
             logits_teacher2 = None
-            if cfg.kd_method in {"hinton", "hard_topk", "conservative", "conservative_multiteacher"}:
+            if cfg.kd_method in {"hinton", "hard_topk", "conservative", "conservative_multiteacher", "topkd"}:
                 logits_teacher = teacher(mixed_images)
                 if cfg.kd_method in {"conservative", "conservative_multiteacher"}:
                     if anchor is None:
@@ -931,6 +980,13 @@ def train_one_epoch(
                     logits_anchor=logits_anchor,
                     targets=targets,
                 )
+            elif cfg.kd_method == "topkd":
+                logits_student = student(mixed_images)
+                loss, breakdown = criterion(
+                    logits_student=logits_student,
+                    logits_teacher=logits_teacher,
+                    targets=targets,
+                )
             else:
                 logits_student, student_embeddings = student.forward_with_embeddings(mixed_images)
                 mix_targets = (targets_a, targets_b, lam) if is_mixed else None
@@ -975,6 +1031,9 @@ def train_one_epoch(
         total_anchor += breakdown.get("loss_anchor", 0.0)
         total_hard_ratio += breakdown.get("hard_ratio", 0.0)
         total_true_rank += breakdown.get("avg_true_rank", 0.0)
+        total_tdl += breakdown.get("loss_tdl", 0.0)
+        total_contrast += breakdown.get("loss_contrast", 0.0)
+        total_topkd += breakdown.get("loss_topkd", 0.0)
 
         if (batch_idx + 1) % cfg.log_interval == 0:
             current_lr = optimizer.param_groups[0]["lr"]
@@ -986,6 +1045,9 @@ def train_one_epoch(
                 f"rel={breakdown.get('loss_relation', 0.0):.4f} "
                 f"emb={breakdown.get('loss_embedding', 0.0):.4f} "
                 f"topk={breakdown.get('loss_topk', 0.0):.4f} "
+                f"tdl={breakdown.get('loss_tdl', 0.0):.4f} "
+                f"contrast={breakdown.get('loss_contrast', 0.0):.4f} "
+                f"topkd={breakdown.get('loss_topkd', 0.0):.4f} "
                 f"t1={breakdown.get('loss_teacher1_kd', 0.0):.4f} "
                 f"t2={breakdown.get('loss_teacher2_kd', 0.0):.4f} "
                 f"margin={breakdown.get('loss_margin', 0.0):.4f} "
@@ -1010,6 +1072,9 @@ def train_one_epoch(
     train_teacher2_active = total_teacher2_active / n_batches
     train_hard_ratio = total_hard_ratio / n_batches
     train_true_rank = total_true_rank / n_batches
+    train_tdl = total_tdl / n_batches
+    train_contrast = total_contrast / n_batches
+    train_topkd = total_topkd / n_batches
     train_acc  = correct    / n_samples
 
     return (
@@ -1018,6 +1083,7 @@ def train_one_epoch(
         train_topk, train_margin, train_anchor,
         train_teacher1_kd, train_teacher2_kd, train_teacher2_active,
         train_hard_ratio, train_true_rank,
+        train_tdl, train_contrast, train_topkd,
     )
 
 
@@ -1076,7 +1142,7 @@ def evaluate(student, loader, device, compute_auc: bool = False):
 # ─── Save checkpoint ─────────────────────────────────────────────────────────
 
 def save_checkpoint(student, epoch: int, val_acc: float,
-                    is_best: bool, output_dir: Path) -> None:
+                    is_best: bool, output_dir: Path, cfg=None) -> None:
     """Simpan state_dict saja (tidak perlu optimizer untuk inference)."""
     ckpt_path = output_dir / "last_model.pth"
     torch.save(student.state_dict(), ckpt_path)
@@ -1084,6 +1150,15 @@ def save_checkpoint(student, epoch: int, val_acc: float,
     if is_best:
         best_path = output_dir / "best_model.pth"
         torch.save(student.state_dict(), best_path)
+
+    if cfg is not None and getattr(cfg, "save_epoch_checkpoints", False):
+        start_epoch = int(getattr(cfg, "checkpoint_start_epoch", 80))
+        interval = int(getattr(cfg, "checkpoint_interval", 10))
+        if epoch >= start_epoch and (epoch - start_epoch) % interval == 0:
+            checkpoint_dir = output_dir / "checkpoints"
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            epoch_path = checkpoint_dir / f"epoch_{epoch:03d}.pth"
+            torch.save(student.state_dict(), epoch_path)
 
 
 # ─── Plot training curves ─────────────────────────────────────────────────────
@@ -1335,6 +1410,25 @@ def main():
             f"agree_bonus={cfg.teacher_agree_bonus} policy={cfg.teacher_disagree_policy} "
             f"anchor_w={cfg.anchor_weight} anchor_T={cfg.anchor_temperature}"
         )
+    elif cfg.kd_method == "topkd":
+        topkd_temperature = cfg.topkd_temperature or cfg.temperature
+        criterion = TopKDLoss(
+            mode=cfg.topkd_mode,
+            topkd_k=cfg.topkd_k,
+            ce_weight=cfg.topkd_ce_weight,
+            tdl_weight=cfg.topkd_tdl_weight,
+            contrast_weight=cfg.topkd_contrast_weight,
+            scale=cfg.topkd_scale,
+            temperature=topkd_temperature,
+            include_gt=cfg.topkd_include_gt,
+            label_smoothing=cfg.label_smoothing,
+        ).to(device)
+        logger.info(
+            f"  Loss: TopKD mode={cfg.topkd_mode} K={cfg.topkd_k} "
+            f"CE={cfg.topkd_ce_weight} TDL={cfg.topkd_tdl_weight} "
+            f"contrast={cfg.topkd_contrast_weight} scale={cfg.topkd_scale} "
+            f"T={topkd_temperature} include_gt={cfg.topkd_include_gt}"
+        )
     else:
         use_relation = cfg.kd_method in {"pairwise", "hybrid"}
         use_embedding = cfg.kd_method in {"embedding", "hybrid"} and cfg.embedding_weight > 0
@@ -1381,6 +1475,7 @@ def main():
             "train_relation", "train_embedding", "train_logit_kd",
             "train_topk", "train_margin", "train_anchor",
             "train_teacher1_kd", "train_teacher2_kd", "teacher2_active",
+            "train_tdl", "train_contrast", "train_topkd",
             "hard_ratio", "avg_true_rank",
             "train_acc", "val_loss", "val_acc", "lr", "time_s",
         ])
@@ -1403,6 +1498,7 @@ def main():
             train_topk, train_margin, train_anchor,
             train_teacher1_kd, train_teacher2_kd, train_teacher2_active,
             train_hard_ratio, train_true_rank,
+            train_tdl, train_contrast, train_topkd,
         ) = train_one_epoch(
             student, teacher, train_loader, optimizer, scheduler,
             criterion, scaler, device, epoch, cfg, logger,
@@ -1423,7 +1519,7 @@ def main():
             best_val_acc = val_acc
             best_epoch   = epoch
 
-        save_checkpoint(student, epoch, val_acc, is_best, output_dir)
+        save_checkpoint(student, epoch, val_acc, is_best, output_dir, cfg)
 
         # Log
         logger.info(
@@ -1431,6 +1527,7 @@ def main():
             f"loss={train_loss:.4f} ce={train_ce:.4f} kd={train_kd:.4f} "
             f"rel={train_rel:.4f} emb={train_emb:.4f} logit_kd={train_logit_kd:.4f} "
             f"topk={train_topk:.4f} margin={train_margin:.4f} anchor={train_anchor:.4f} "
+            f"tdl={train_tdl:.4f} contrast={train_contrast:.4f} topkd={train_topkd:.4f} "
             f"t1={train_teacher1_kd:.4f} t2={train_teacher2_kd:.4f} "
             f"t2_active={train_teacher2_active:.2f} "
             f"hard={train_hard_ratio:.2f} rank={train_true_rank:.2f} "
@@ -1454,6 +1551,9 @@ def main():
             "train_teacher1_kd": round(train_teacher1_kd, 6),
             "train_teacher2_kd": round(train_teacher2_kd, 6),
             "teacher2_active": round(train_teacher2_active, 6),
+            "train_tdl": round(train_tdl, 6),
+            "train_contrast": round(train_contrast, 6),
+            "train_topkd": round(train_topkd, 6),
             "hard_ratio": round(train_hard_ratio, 6),
             "avg_true_rank": round(train_true_rank, 6),
             "train_acc" : round(train_acc, 4),
@@ -1538,12 +1638,24 @@ def main():
             "teacher2_conf_threshold": cfg.teacher2_conf_threshold,
             "teacher_agree_bonus": cfg.teacher_agree_bonus,
             "teacher_disagree_policy": cfg.teacher_disagree_policy,
+            "topkd_mode": cfg.topkd_mode,
+            "topkd_k": cfg.topkd_k,
+            "topkd_ce_weight": cfg.topkd_ce_weight,
+            "topkd_tdl_weight": cfg.topkd_tdl_weight,
+            "topkd_contrast_weight": cfg.topkd_contrast_weight,
+            "topkd_scale": cfg.topkd_scale,
+            "topkd_temperature": cfg.topkd_temperature or cfg.temperature,
+            "topkd_include_gt": cfg.topkd_include_gt,
             "freeze_bn"  : cfg.freeze_bn,
             "cutout_length": cfg.cutout_length,
             "augmentation_policy": cfg.augmentation_policy,
             "train_sampler": cfg.train_sampler,
+            "num_workers"  : cfg.num_workers,
             "pk_p"       : cfg.pk_p,
             "pk_k"       : cfg.pk_k,
+            "save_epoch_checkpoints": getattr(cfg, "save_epoch_checkpoints", False),
+            "checkpoint_start_epoch": getattr(cfg, "checkpoint_start_epoch", 80),
+            "checkpoint_interval": getattr(cfg, "checkpoint_interval", 10),
             "epochs"     : cfg.epochs,
             "lr"         : cfg.lr,
         },

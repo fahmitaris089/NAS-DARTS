@@ -65,8 +65,10 @@ def get_transforms(split="train", input_size=INPUT_SIZE,
         use_augmentation: enable augmentation for train
         cutout_length:  CutOut patch size (0 = disabled)
         augmentation_policy: "v1_legacy" (with horizontal flip), "v2_multi_distance"
-                             (no flip, more aggressive), or "v3_no_flip_light"
-                             (no flip, mild fine-tuning/KD policy)
+                             (no flip, more aggressive), "v3_no_flip_light"
+                             (no flip, mild fine-tuning/KD policy), or
+                             "v4_robust_light" (no flip, mild geometry with
+                             stronger brightness/contrast robustness)
     """
     common_tail = [
         transforms.ToTensor(),
@@ -102,6 +104,20 @@ def get_transforms(split="train", input_size=INPUT_SIZE,
                     scale=(0.97, 1.08),
                 ),
                 transforms.ColorJitter(brightness=0.08, contrast=0.05),
+                *common_tail,
+            ]
+        elif augmentation_policy == "v4_robust_light":
+            # Augmentation v4: robustness-aware KD policy for outlier crops and
+            # weak/over-bright vein patterns. No horizontal flip.
+            aug_list = [
+                transforms.Resize((input_size, input_size)),
+                transforms.RandomRotation(degrees=4),
+                transforms.RandomAffine(
+                    degrees=0,
+                    translate=(0.04, 0.04),
+                    scale=(0.94, 1.10),
+                ),
+                transforms.ColorJitter(brightness=0.18, contrast=0.12),
                 *common_tail,
             ]
         else:
@@ -351,7 +367,8 @@ def create_retrain_dataloaders(
 
     Args:
         augmentation_policy: "v1_legacy" (with horizontal flip), "v2_multi_distance" (no flip),
-                             or "v3_no_flip_light" (no flip, mild fine-tuning/KD policy)
+                             "v3_no_flip_light" (no flip, mild fine-tuning/KD policy),
+                             or "v4_robust_light" (no flip, robust light/crop policy)
         sampler_type: "random" for standard shuffled batches, or "pk" for P*K identity-balanced batches
         pk_p: number of identities per PK batch
         pk_k: number of samples per identity in PK batch

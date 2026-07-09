@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-07-07T15:57:24.807047",
+  "method": "qat_kd_fake_quant",
+  "student_config_path": "nas_results/retrain_hwNAS_L0.05_C12_cells10_stemds8_834cls/config.json",
+  "student_weights": "knowledge_distilation/kd_results/kd_L0.05_C12_cells10_stem8_t20_a05_lr1e4_e160_nw0/best_model.pth",
+  "teacher_arch": "efficientnet_v2_m",
+  "teacher_weights": "Teacher/training_results/EfficientNetV2M/best_model.pth",
+  "num_classes": 834,
+  "temperature": 20.0,
+  "alpha": 0.7,
+  "anchor_weight": 3.0,
+  "anchor_temperature": 2.0,
+  "epochs": 30,
+  "batch_size": 64,
+  "lr": 2e-07,
+  "lr_min": 2e-08,
+  "weight_decay": 0.0,
+  "drop_path_prob": 0.0,
+  "freeze_bn": true,
+  "cutout_length": 16,
+  "augmentation_policy": "v1_legacy",
+  "num_workers": 0,
+  "seed": 42,
+  "amp": true,
+  "fake_quant": {
+    "weight": "per_channel_symmetric_int8_ste_conv_linear",
+    "activation": "per_tensor_uint8_ste_conv_outputs",
+    "activation_enabled": false
+  }
+}

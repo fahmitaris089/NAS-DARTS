@@ -96,6 +96,14 @@ class KDConfig:
     teacher2_conf_threshold: float = 0.05
     teacher_agree_bonus: float = 1.5
     teacher_disagree_policy: str = "teacher2_only"
+    topkd_mode: str = "lite"          # "lite" or "full"
+    topkd_k: int = 20
+    topkd_ce_weight: float = 1.0
+    topkd_tdl_weight: float = 0.5
+    topkd_contrast_weight: float = 0.05
+    topkd_scale: float = 2.0
+    topkd_temperature: float = 0.0    # 0.0 -> follow temperature
+    topkd_include_gt: bool = True
 
     # ── Optimiser ────────────────────────────────────────────────────────────
     epochs: int          = 150
@@ -191,6 +199,16 @@ def print_config(cfg: KDConfig) -> None:
             f"anchor_T={cfg.anchor_temperature}"
         )
         print(f"                    anchor_weights={cfg.anchor_weights or cfg.student_weights}")
+    if cfg.kd_method == "topkd":
+        print(
+            f"  Top-KD          : mode={cfg.topkd_mode}  K={cfg.topkd_k}  "
+            f"CE={cfg.topkd_ce_weight}  TDL={cfg.topkd_tdl_weight}  "
+            f"contrast={cfg.topkd_contrast_weight}"
+        )
+        print(
+            f"                    scale={cfg.topkd_scale}  "
+            f"T={cfg.topkd_temperature or cfg.temperature}  include_gt={cfg.topkd_include_gt}"
+        )
     print()
     print(f"  Epochs          : {cfg.epochs}")
     print(f"  Batch size      : {cfg.batch_size}")
