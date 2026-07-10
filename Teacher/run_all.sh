@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-#  Palm Vein Recognition — Train All 9 Models Sequentially
+#  Palm Vein Recognition — Train All Models Sequentially
 # =============================================================================
 #
 #  Usage:
@@ -25,6 +25,7 @@ MODELS=(
     "EfficientNetB4"
     "EfficientNetV2M"
     "MobileNetV3Large"
+    "GhostNet_050"
     "ConvNeXtBase"
     "RegNetY16GF"
 )

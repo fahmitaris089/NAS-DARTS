@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Train semua 9 model secara berurutan (production run).
+Train semua model secara berurutan (production run).
 
 Usage:
     python run_all.py                     # 300 epoch (default)
@@ -24,6 +24,7 @@ MODELS = [
     "EfficientNetB4",
     "EfficientNetV2M",
     "MobileNetV3Large",
+    "GhostNet_050",
     "ConvNeXtBase",
     "RegNetY16GF"
 ]

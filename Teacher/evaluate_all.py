@@ -1,5 +1,5 @@
 """
-Palm Vein Recognition — Compare All 9 Models
+Palm Vein Recognition — Compare All Models
 =============================================
 Run after all models are trained:
     python3 evaluate_all.py
@@ -26,7 +26,8 @@ RESULTS_DIR = Path("training_results")
 MODEL_NAMES = [
     "InceptionV3", "ResNet50", "VGG16", "DenseNet121",
     "EfficientNetB4", "EfficientNetV2M", "MobileNetV3Large",
-    "MobileNetV3Small", "ShuffleNetV2_x1_0", "EfficientNetLite0",
+    "MobileNetV3Small", "ShuffleNetV2_x1_0", "GhostNet_050",
+    "EfficientNetLite0",
     "ConvNeXtBase", "RegNetY16GF",
 ]
 

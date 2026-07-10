@@ -60,11 +60,13 @@ MODEL_CONFIGS = {
     },
     "GhostNet_050": {
         "input_size": 224,
-        "description": "GhostNet 0.5x — cheap-operation lightweight CNN (no ImageNet pretrained weights in timm)",
+        "description": "GhostNet 0.5x — cheap-operation lightweight CNN, trained from scratch",
+        "pretrained": False,
     },
     "GhostNet_100": {
         "input_size": 224,
         "description": "GhostNet 1.0x — cheap-operation lightweight CNN",
+        "pretrained": True,
     },
     "EfficientNetLite0": {
         "input_size": 224,
@@ -291,7 +293,9 @@ def create_model(model_name, num_classes):
     assert model_name in _BUILDERS, \
         f"Unknown model '{model_name}'. Available: {get_available_models()}"
 
-    print(f"Creating {model_name} (pretrained=ImageNet, num_classes={num_classes})")
+    pretrained = MODEL_CONFIGS[model_name].get("pretrained", True)
+    pretrained_label = "ImageNet" if pretrained else "False"
+    print(f"Creating {model_name} (pretrained={pretrained_label}, num_classes={num_classes})")
     print(f"  {MODEL_CONFIGS[model_name]['description']}")
 
     model      = _BUILDERS[model_name](num_classes)

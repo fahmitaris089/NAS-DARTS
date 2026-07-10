@@ -5,8 +5,9 @@ Usage:
     python3 train_model.py --model ResNet50
     python3 train_model.py --model InceptionV3 --epochs 300 --no_augmentation
     python3 train_model.py --model MobileNetV3Large --epochs 5 --batch_size 16
+    python3 train_model.py --model GhostNet_050 --epochs 300 --batch_size 32
 
-All 9 models are trained independently. Run one at a time.
+Models are trained independently. Run one at a time.
 Results saved to training_results/{ModelName}/
 """
 

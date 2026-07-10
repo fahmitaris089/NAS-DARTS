@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script untuk menjalankan semua 9 model dengan 2 epoch.
+Test script untuk menjalankan semua model dengan 2 epoch.
 Cek apakah setiap model bisa training tanpa error.
 
 Usage:
@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Daftar 9 model
 MODELS = [
     "ResNet50",
     "InceptionV3",
@@ -20,6 +19,7 @@ MODELS = [
     "EfficientNetB4",
     "EfficientNetV2M",
     "MobileNetV3Large",
+    "GhostNet_050",
     "ConvNeXtBase",
     "RegNetY16GF"
 ]
@@ -48,7 +48,7 @@ def run_model(model_name, epochs=2):
 def main():
     """Test semua model satu per satu."""
     print("\n" + "="*60)
-    print("🧪 TESTING ALL 9 MODELS (2 epochs each)")
+    print(f"🧪 TESTING ALL {len(MODELS)} MODELS (2 epochs each)")
     print("="*60)
     
     results = {}
