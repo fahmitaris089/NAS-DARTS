@@ -1,9 +1,9 @@
 {
-  "exported_at": "2026-07-11T00:05:12.187783",
-  "model_dir": "nas_results/retrain_hwNAS_L0.10_C10_stemds8_834cls",
-  "model_path": "nas_results/retrain_hwNAS_L0.10_C10_stemds8_834cls/best_model.pth",
-  "config_path": "nas_results/retrain_hwNAS_L0.10_C10_stemds8_834cls/config.json",
-  "onnx_path": "nas_results/retrain_hwNAS_L0.10_C10_stemds8_834cls/model_benchmark.onnx",
+  "exported_at": "2026-07-10T23:59:23.917953",
+  "model_dir": "nas_results/retrain_hwNAS_L0.00_C8_stemds8_834cls",
+  "model_path": "nas_results/retrain_hwNAS_L0.00_C8_stemds8_834cls/best_model.pth",
+  "config_path": "nas_results/retrain_hwNAS_L0.00_C8_stemds8_834cls/config.json",
+  "onnx_path": "nas_results/retrain_hwNAS_L0.00_C8_stemds8_834cls/model_benchmark.onnx",
   "genotype_source": "config.genotype",
   "input_size": 224,
   "opset": 13,
@@ -1680,9 +1680,9 @@
     "833",
     "834"
   ],
-  "c_init": 10,
+  "c_init": 8,
   "num_cells": 8,
-  "model_size_mb": 2.363911,
+  "model_size_mb": 1.169205,
   "backend": "onnxruntime",
   "output_names": [
     "logits",
@@ -1690,6 +1690,6 @@
   ],
   "logits_output_name": "logits",
   "embedding_output_name": "embedding",
-  "embedding_dimension": 160,
+  "embedding_dimension": 128,
   "includes_embeddings": true
 }

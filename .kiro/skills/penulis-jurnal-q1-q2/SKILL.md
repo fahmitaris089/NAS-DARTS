@@ -69,6 +69,42 @@ Gunakan istilah teknis bahasa Inggris jika istilah tersebut lebih lazim dalam bi
 
 Untuk naskah tesis atau artikel berbahasa Indonesia, istilah asing yang belum diserap dan muncul sebagai frasa teknis sebaiknya ditulis miring, misalnya *deep learning*, *latency*, *hardware-aware*, *lookup table*, *teacher model*, *student model*, *trade-off*, *closed-set identification*, *pruning*, dan *quantization*. Jangan memiringkan akronim teknis yang sudah berfungsi sebagai label metode atau format, seperti CNN, NAS, P-DARTS, LUT, ROI, PTQ, INT8, FP32, FLOPs, ONNX, CPU, serta nama perangkat atau perangkat lunak seperti Raspberry Pi dan ONNX Runtime. Jika istilah yang sama muncul berulang dalam satu paragraf, tetap jaga konsistensi formatnya.
 
+### Aturan Italic Istilah Teknis
+
+Gunakan aturan berikut ketika menyunting tesis, artikel, caption, dan pembahasan hasil eksperimen berbasis NAS, KD, *quantization*, dan *edge AI*.
+
+Istilah teknis asing yang belum diserap dan dipakai sebagai istilah konsep harus ditulis miring dalam narasi, judul subbab, caption gambar, dan paragraf penjelas tabel. Contoh istilah yang perlu dimiringkan:
+
+- *search space*, *search*, *hardware-aware*, *latency*, *lookup table*, *edge device*, *deployment*, *benchmark*, *trade-off*;
+- *genotype*, *cell*, *normal cell*, *reduction cell*, *stem downsample*, *reduction indices*, *auxiliary head*;
+- *retraining*, *fine-tuning*, *checkpoint*, *inference*, *learning rate*, *drop path*, *label smoothing*, *best validation loss*;
+- *student*, *teacher*, *student model*, *teacher model*, *Knowledge Distillation*, *soft target*, *hard label*;
+- *quantization*, *post-training quantization*, *quantization-aware training*, *calibration*, *selective quantization*.
+
+Jangan memiringkan akronim, format, metrik, nama metode yang sudah menjadi label baku, nama model, nama perangkat, atau nama perangkat lunak. Contoh yang tetap ditulis tegak:
+
+- CNN, NAS, KD, QAT, PTQ, P-DARTS, DARTS, LUT, ROI;
+- INT8, FP32, FP16, ONNX, FLOPs, AUC, EER, CPU, GPU;
+- Raspberry Pi, ONNX Runtime, PyTorch, CUDA;
+- MobileNetV3Small, MobileNetV3Large, EfficientNetV2M, EfficientNetLite0, ShuffleNetV2;
+- nama file, path, nama folder, nama script, dan nama checkpoint spesifik.
+
+Parameter atau identifier konfigurasi tidak dimiringkan karena berfungsi sebagai nama variabel. Pertahankan bentuk aslinya, misalnya `C_init`, `num_cells`, `stem_downsample`, `reduction_indices`, `drop_path_prob`, `cutout_length`, `batch_size`, `weight_decay`, `lr`, dan `lr_min`. Jika format dokumen mendukung gaya monospace, gunakan monospace untuk identifier tersebut; jika tidak, tulis tegak dan konsisten.
+
+Untuk tabel, header boleh ringkas dan tidak perlu memaksa semua istilah asing menjadi miring, terutama jika keterbacaan tabel menurun. Namun, caption tabel, caption gambar, dan paragraf interpretasi setelah tabel tetap mengikuti aturan italic istilah teknis. Nilai numerik, nama model, label konfigurasi, dan metrik pada isi tabel tidak perlu dimiringkan.
+
+Dalam satu paragraf atau satu caption, jika suatu istilah teknis sudah ditulis miring, semua kemunculan istilah yang sama dalam unit teks tersebut harus konsisten. Jangan mencampur bentuk *latency* dan latency, *student* dan student, atau *quantization* dan quantization dalam paragraf yang sama.
+
+Gunakan padanan Indonesia jika lebih natural dan tidak mengurangi presisi. Misalnya, gunakan `akurasi` daripada *accuracy*, `ukuran model` daripada *model size*, `kuantisasi` daripada *quantization* jika konteksnya umum, dan `linier` daripada linear. Jika istilah Inggris dipertahankan karena menjadi istilah teknis spesifik, tulis miring sesuai aturan di atas.
+
+Saat melakukan revisi dokumen akademik, selalu lakukan audit akhir pada bagian yang diedit:
+
+- cek konsistensi italic istilah teknis;
+- cek konsistensi istilah Indonesia dan Inggris;
+- cek EYD, tanda baca, dan kapitalisasi;
+- cek agar parameter, path, model, dan akronim tidak ikut dimiringkan;
+- cek agar klaim tetap sesuai data dan tidak menjadi lebih kuat daripada bukti yang tersedia.
+
 ## Pedoman Kealamian Bahasa
 
 Tulisan harus terdengar seperti naskah yang disusun peneliti manusia yang teliti, bukan seperti template generik. Untuk itu:

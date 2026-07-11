@@ -1,0 +1,27 @@
+{
+  "exported_at": "2026-07-10T22:23:40.251381",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwNAS_L0.10_C10_stemds8_834cls",
+  "model_path": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwNAS_L0.10_C10_stemds8_834cls/best_model.pth",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwNAS_L0.10_C10_stemds8_834cls/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwNAS_L0.10_C10_stemds8_834cls/model_benchmark_int8_static.onnx",
+  "input_size": 224,
+  "opset": 13,
+  "num_classes": 834,
+  "c_init": 10,
+  "num_cells": 8,
+  "stem_downsample": 8,
+  "reduction_indices": [
+    2,
+    5
+  ],
+  "auxiliary": false,
+  "fp32_size_mb": 2.3623,
+  "int8_size_mb": 0.8251,
+  "backend": "onnxruntime",
+  "kd_config": {
+    "teacher_arch": null,
+    "temperature": null,
+    "alpha": null,
+    "epochs": 300
+  }
+}

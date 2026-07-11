@@ -533,6 +533,204 @@
         "accuracy_delta_pp": -0.24
       }
     },
+    {
+      "model": "retrain_hwNAS_L0.10_C6_stemds8_834cls",
+      "fp32": {
+        "onnx": "model_benchmark.onnx",
+        "accuracy_pct": 96.16,
+        "correct": 802,
+        "total": 834,
+        "size_mb": 1.019,
+        "latency_ms": {
+          "mean": 2.25,
+          "median": 2.17,
+          "p95": 2.69
+        }
+      },
+      "int8": {
+        "onnx": "model_benchmark_int8_static.onnx",
+        "accuracy_pct": 96.16,
+        "correct": 802,
+        "total": 834,
+        "size_mb": 0.484,
+        "latency_ms": {
+          "mean": 2.24,
+          "median": 2.16,
+          "p95": 2.84
+        }
+      },
+      "delta": {
+        "latency_speedup_x": 1.0,
+        "int8_faster": true,
+        "size_ratio_x": 2.1,
+        "accuracy_delta_pp": 0.0
+      }
+    },
+    {
+      "model": "retrain_hwNAS_L0.10_C8_stemds8_834cls",
+      "fp32": {
+        "onnx": "model_benchmark.onnx",
+        "accuracy_pct": 98.2,
+        "correct": 819,
+        "total": 834,
+        "size_mb": 1.621,
+        "latency_ms": {
+          "mean": 3.12,
+          "median": 3.0,
+          "p95": 3.78
+        }
+      },
+      "int8": {
+        "onnx": "model_benchmark_int8_static.onnx",
+        "accuracy_pct": 97.96,
+        "correct": 817,
+        "total": 834,
+        "size_mb": 0.64,
+        "latency_ms": {
+          "mean": 2.41,
+          "median": 2.33,
+          "p95": 2.89
+        }
+      },
+      "delta": {
+        "latency_speedup_x": 1.29,
+        "int8_faster": true,
+        "size_ratio_x": 2.53,
+        "accuracy_delta_pp": -0.24
+      }
+    },
+    {
+      "model": "retrain_hwNAS_L0.10_C10_stemds8_834cls",
+      "fp32": {
+        "onnx": "model_benchmark.onnx",
+        "accuracy_pct": 98.68,
+        "correct": 823,
+        "total": 834,
+        "size_mb": 2.364,
+        "latency_ms": {
+          "mean": 4.03,
+          "median": 3.85,
+          "p95": 4.83
+        }
+      },
+      "int8": {
+        "onnx": "model_benchmark_int8_static.onnx",
+        "accuracy_pct": 98.68,
+        "correct": 823,
+        "total": 834,
+        "size_mb": 0.832,
+        "latency_ms": {
+          "mean": 3.15,
+          "median": 3.02,
+          "p95": 3.87
+        }
+      },
+      "delta": {
+        "latency_speedup_x": 1.28,
+        "int8_faster": true,
+        "size_ratio_x": 2.84,
+        "accuracy_delta_pp": 0.0
+      }
+    },
+    {
+      "model": "retrain_hwNAS_L0.00_C6_stemds8_834cls",
+      "fp32": {
+        "onnx": "model_benchmark.onnx",
+        "accuracy_pct": 97.12,
+        "correct": 810,
+        "total": 834,
+        "size_mb": 0.79,
+        "latency_ms": {
+          "mean": 2.57,
+          "median": 2.47,
+          "p95": 3.12
+        }
+      },
+      "int8": {
+        "onnx": "model_benchmark_int8_static.onnx",
+        "accuracy_pct": 96.76,
+        "correct": 807,
+        "total": 834,
+        "size_mb": 0.63,
+        "latency_ms": {
+          "mean": 3.68,
+          "median": 3.55,
+          "p95": 4.33
+        }
+      },
+      "delta": {
+        "latency_speedup_x": 0.7,
+        "int8_faster": false,
+        "size_ratio_x": 1.25,
+        "accuracy_delta_pp": -0.36
+      }
+    },
+    {
+      "model": "retrain_hwNAS_L0.00_C8_stemds8_834cls",
+      "fp32": {
+        "onnx": "model_benchmark.onnx",
+        "accuracy_pct": 98.08,
+        "correct": 818,
+        "total": 834,
+        "size_mb": 1.169,
+        "latency_ms": {
+          "mean": 3.46,
+          "median": 3.34,
+          "p95": 4.06
+        }
+      },
+      "int8": {
+        "onnx": "model_benchmark_int8_static.onnx",
+        "accuracy_pct": 98.08,
+        "correct": 818,
+        "total": 834,
+        "size_mb": 0.737,
+        "latency_ms": {
+          "mean": 3.45,
+          "median": 3.32,
+          "p95": 4.22
+        }
+      },
+      "delta": {
+        "latency_speedup_x": 1.0,
+        "int8_faster": true,
+        "size_ratio_x": 1.59,
+        "accuracy_delta_pp": 0.0
+      }
+    },
+    {
+      "model": "retrain_hwNAS_L0.00_C10_stemds8_834cls",
+      "fp32": {
+        "onnx": "model_benchmark.onnx",
+        "accuracy_pct": 98.08,
+        "correct": 818,
+        "total": 834,
+        "size_mb": 1.621,
+        "latency_ms": {
+          "mean": 4.08,
+          "median": 3.92,
+          "p95": 4.77
+        }
+      },
+      "int8": {
+        "onnx": "model_benchmark_int8_static.onnx",
+        "accuracy_pct": 98.2,
+        "correct": 819,
+        "total": 834,
+        "size_mb": 0.858,
+        "latency_ms": {
+          "mean": 4.56,
+          "median": 4.44,
+          "p95": 5.1
+        }
+      },
+      "delta": {
+        "latency_speedup_x": 0.89,
+        "int8_faster": false,
+        "size_ratio_x": 1.89,
+        "accuracy_delta_pp": 0.12
+      }
+    },
     [
       {
         "model": "finetune_hwNAS_L0.20_C8_t3_a1.0_ls0_nomix_lr1e4_fixed",

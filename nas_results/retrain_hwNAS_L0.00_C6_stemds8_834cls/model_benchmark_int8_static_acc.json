@@ -1,0 +1,8 @@
+{
+  "onnx": "nas_results/retrain_hwNAS_L0.00_C6_stemds8_834cls/model_benchmark_int8_static.onnx",
+  "data_dir": "preprocessed_results",
+  "split": "test",
+  "num_samples": 834,
+  "top1_correct": 807,
+  "top1_accuracy": 0.9676258992805755
+}
