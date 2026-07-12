@@ -70,6 +70,73 @@
       }
     },
     {
+      "model": "GhostNet_100",
+      "fp32": {
+        "onnx": "model_benchmark.onnx",
+        "accuracy_pct": 99.88,
+        "correct": 833,
+        "total": 834,
+        "size_mb": 19.93,
+        "latency_ms": {
+          "mean": 15.54,
+          "median": 14.53,
+          "p95": 21.1
+        }
+      },
+      "int8": {
+        "onnx": "model_benchmark_int8_static.onnx",
+        "accuracy_pct": 99.76,
+        "correct": 832,
+        "total": 834,
+        "size_mb": 5.596,
+        "latency_ms": {
+          "mean": 7.21,
+          "median": 6.93,
+          "p95": 8.07
+        }
+      },
+      "delta": {
+        "latency_speedup_x": 2.16,
+        "int8_faster": true,
+        "size_ratio_x": 3.56,
+        "accuracy_delta_pp": -0.12
+      }
+    },
+    {
+      "model": "ShuffleNetV2_x0_5",
+      "fp32": {
+        "onnx": "model_benchmark.onnx",
+        "accuracy_pct": 98.2,
+        "correct": 819,
+        "total": 834,
+        "size_mb": 4.897,
+        "latency_ms": {
+          "mean": 3.75,
+          "median": 3.58,
+          "p95": 4.53
+        }
+      },
+      "int8": {
+        "onnx": "model_benchmark_int8_static.onnx",
+        "accuracy_pct": 95.56,
+        "correct": 797,
+        "total": 834,
+        "size_mb": 1.528,
+        "latency_ms": {
+          "mean": 3.25,
+          "median": 3.11,
+          "p95": 3.92
+        }
+      },
+      "delta": {
+        "latency_speedup_x": 1.15,
+        "int8_faster": true,
+        "size_ratio_x": 3.2,
+        "accuracy_delta_pp": -2.64
+      },
+      "note": "Super-lightweight baseline; full PTQ INT8 without skipped layers."
+    },
+    {
       "model": "ShuffleNetV2_x1_0",
       "fp32": {
         "onnx": "model_benchmark.onnx",

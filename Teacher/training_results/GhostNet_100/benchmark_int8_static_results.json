@@ -1,0 +1,24 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/GhostNet_100",
+  "model": "GhostNet_100",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/GhostNet_100/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/GhostNet_100/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/preprocessed_results",
+  "num_calib": 834,
+  "threads": 4,
+  "fp32_size_mb": 19.9299,
+  "int8_size_mb": 5.5963,
+  "fp32_4t_ms": 8.1781,
+  "int8_4t_ms": 3.3882,
+  "speedup_x": 2.4137,
+  "quant_recipe": {
+    "per_channel": true,
+    "quant_format": "QDQ",
+    "activation_type": "QUInt8",
+    "weight_type": "QInt8",
+    "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/GhostNet_100/model_benchmark_pre.onnx",
+    "quant_pre_process": true,
+    "skip_first_conv": 0,
+    "nodes_to_quantize": null
+  }
+}

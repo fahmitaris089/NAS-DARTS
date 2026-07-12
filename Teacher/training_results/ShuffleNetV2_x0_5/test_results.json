@@ -1,0 +1,15 @@
+{
+  "accuracy": 0.9820143884892086,
+  "precision": 0.9730215827338129,
+  "recall": 0.9820143884892086,
+  "f1_score": 0.9760191846522782,
+  "auc": 0.9999812874790205,
+  "eer": 1.8712520980526636e-05,
+  "inference_time_per_batch_sec": 0.03552395326119882,
+  "num_test_samples": 834,
+  "best_epoch": 185,
+  "best_val_loss": 2.2290157156882526,
+  "total_params": 1196642,
+  "training_time_min": 42.025973137219744,
+  "model_name": "ShuffleNetV2_x0_5"
+}

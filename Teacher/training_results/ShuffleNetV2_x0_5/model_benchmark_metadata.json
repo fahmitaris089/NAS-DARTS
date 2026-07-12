@@ -1,0 +1,16 @@
+{
+  "exported_at": "2026-07-11T23:56:41.370610",
+  "model": "ShuffleNetV2_x0_5",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ShuffleNetV2_x0_5",
+  "weights_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ShuffleNetV2_x0_5/best_model.pth",
+  "onnx_path": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ShuffleNetV2_x0_5/model_benchmark.onnx",
+  "num_classes": 834,
+  "input_size": 224,
+  "opset": 13,
+  "backend": "onnxruntime",
+  "output_names": [
+    "logits"
+  ],
+  "logits_output_name": "logits",
+  "model_size_mb": 4.897177
+}

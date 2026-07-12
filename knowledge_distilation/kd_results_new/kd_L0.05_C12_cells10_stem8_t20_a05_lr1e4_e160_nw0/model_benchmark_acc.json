@@ -1,0 +1,8 @@
+{
+  "accuracy": 0.997602,
+  "correct": 832,
+  "total": 834,
+  "num_classes": 834,
+  "data_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/preprocessed_results",
+  "split_path": "/Users/fahmitaris/Downloads/NAS-DARTS/split_info.json"
+}

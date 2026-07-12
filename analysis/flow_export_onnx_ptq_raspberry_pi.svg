@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="762.9pt" height="266.297656pt" viewBox="0 0 762.9 266.297656" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-07-11T23:42:02.190054</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.9.4, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 266.297656 
+L 762.9 266.297656 
+L 762.9 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 28.030896 173.848332 
+L 138.1875 173.848332 
+Q 144.542689 173.848332 144.542689 168.387521 
+L 144.542689 119.240224 
+Q 144.542689 113.779413 138.1875 113.779413 
+L 28.030896 113.779413 
+Q 21.675708 113.779413 21.675708 119.240224 
+L 21.675708 168.387521 
+Q 21.675708 173.848332 28.030896 173.848332 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #e0f2fe; stroke: #0284c7; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 169.257311 173.848332 
+L 279.413915 173.848332 
+Q 285.769104 173.848332 285.769104 168.387521 
+L 285.769104 119.240224 
+Q 285.769104 113.779413 279.413915 113.779413 
+L 169.257311 113.779413 
+Q 162.902123 113.779413 162.902123 119.240224 
+L 162.902123 168.387521 
+Q 162.902123 173.848332 169.257311 173.848332 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #ecfdf5; stroke: #059669; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 310.483726 173.848332 
+L 434.762972 173.848332 
+Q 441.11816 173.848332 441.11816 168.387521 
+L 441.11816 119.240224 
+Q 441.11816 113.779413 434.762972 113.779413 
+L 310.483726 113.779413 
+Q 304.128538 113.779413 304.128538 119.240224 
+L 304.128538 168.387521 
+Q 304.128538 173.848332 310.483726 173.848332 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #fff7ed; stroke: #d97706; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 465.832783 173.848332 
+L 568.928066 173.848332 
+Q 575.283255 173.848332 575.283255 168.387521 
+L 575.283255 119.240224 
+Q 575.283255 113.779413 568.928066 113.779413 
+L 465.832783 113.779413 
+Q 459.477594 113.779413 459.477594 119.240224 
+L 459.477594 168.387521 
+Q 459.477594 173.848332 465.832783 173.848332 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #fef2f2; stroke: #dc2626; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 599.997877 173.848332 
+L 731.338443 173.848332 
+Q 737.693632 173.848332 737.693632 168.387521 
+L 737.693632 119.240224 
+Q 737.693632 113.779413 731.338443 113.779413 
+L 599.997877 113.779413 
+Q 593.642689 113.779413 593.642689 119.240224 
+L 593.642689 168.387521 
+Q 593.642689 173.848332 599.997877 173.848332 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 147.014151 143.813872 
+Q 153.016274 143.813872 157.229542 143.813872 
+" clip-path="url(#p7d4163c081)" style="fill: none; stroke: #475569; stroke-width: 1.6; stroke-linecap: round"/>
+    <path d="M 151.629542 141.013872 
+L 157.229542 143.813872 
+L 151.629542 146.613872 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #475569; stroke: #475569; stroke-width: 1.6; stroke-linecap: round"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 288.240566 143.813872 
+Q 294.242689 143.813872 298.455957 143.813872 
+" clip-path="url(#p7d4163c081)" style="fill: none; stroke: #475569; stroke-width: 1.6; stroke-linecap: round"/>
+    <path d="M 292.855957 141.013872 
+L 298.455957 143.813872 
+L 292.855957 146.613872 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #475569; stroke: #475569; stroke-width: 1.6; stroke-linecap: round"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 443.589623 143.813872 
+Q 449.591745 143.813872 453.805014 143.813872 
+" clip-path="url(#p7d4163c081)" style="fill: none; stroke: #475569; stroke-width: 1.6; stroke-linecap: round"/>
+    <path d="M 448.205014 141.013872 
+L 453.805014 143.813872 
+L 448.205014 146.613872 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #475569; stroke: #475569; stroke-width: 1.6; stroke-linecap: round"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 577.754717 143.813872 
+Q 583.75684 143.813872 587.970108 143.813872 
+" clip-path="url(#p7d4163c081)" style="fill: none; stroke: #475569; stroke-width: 1.6; stroke-linecap: round"/>
+    <path d="M 582.370108 141.013872 
+L 587.970108 143.813872 
+L 582.370108 146.613872 
+z
+" clip-path="url(#p7d4163c081)" style="fill: #475569; stroke: #475569; stroke-width: 1.6; stroke-linecap: round"/>
+   </g>
+   <g id="text_1">
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(49.311409 140.733777)">Checkpoint</text>
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(42.4818 152.715437)">PyTorch FP32</text>
+   </g>
+   <g id="text_2">
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(204.529746 140.775574)">Export</text>
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(189.824769 152.757233)">ONNX FP32</text>
+   </g>
+   <g id="text_3">
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(344.801677 140.775574)">PTQ INT8</text>
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(340.345294 152.757233)">+ kalibrasi</text>
+   </g>
+   <g id="text_4">
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(499.75301 140.775574)">ONNX</text>
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(503.540643 152.757233)">INT8</text>
+   </g>
+   <g id="text_5">
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(631.791793 140.733777)">Benchmark</text>
+    <text style="fill: #111827; font: 700 10.7px 'DejaVu Sans'" transform="translate(627.084629 152.715437)">Raspberry Pi</text>
+   </g>
+   <g id="text_6">
+    <text style="fill: #475569; font: 8.5px 'DejaVu Sans'; text-anchor: middle" x="83.109198" y="200.026598" transform="rotate(-0 83.109198 200.026598)">hasil KD / best_model.pth</text>
+   </g>
+   <g id="text_7">
+    <text style="fill: #475569; font: 8.5px 'DejaVu Sans'; text-anchor: middle" x="224.335613" y="200.026598" transform="rotate(-0 224.335613 200.026598)">format inferensi ONNX Runtime</text>
+   </g>
+   <g id="text_8">
+    <text style="fill: #475569; font: 8.5px 'DejaVu Sans'; text-anchor: middle" x="372.623349" y="200.026598" transform="rotate(-0 372.623349 200.026598)">menggunakan data kalibrasi</text>
+   </g>
+   <g id="text_9">
+    <text style="fill: #475569; font: 8.5px 'DejaVu Sans'; text-anchor: middle" x="665.66816" y="200.026598" transform="rotate(-0 665.66816 200.026598)">akurasi, ukuran, latency</text>
+   </g>
+   <g id="text_10">
+    <text style="font: 700 15px 'DejaVu Sans'; text-anchor: middle" x="381.45" y="18.597656" transform="rotate(-0 381.45 18.597656)">Alur Ekspor ONNX dan PTQ INT8 untuk Evaluasi Raspberry Pi</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p7d4163c081">
+   <rect x="7.2" y="34.597656" width="748.5" height="224.5"/>
+  </clipPath>
+ </defs>
+</svg>

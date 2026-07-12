@@ -1,0 +1,24 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ShuffleNetV2_x0_5",
+  "model": "ShuffleNetV2_x0_5",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ShuffleNetV2_x0_5/model_benchmark.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ShuffleNetV2_x0_5/model_benchmark_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/preprocessed_results",
+  "num_calib": 834,
+  "threads": 4,
+  "fp32_size_mb": 4.8972,
+  "int8_size_mb": 1.5282,
+  "fp32_4t_ms": 1.282,
+  "int8_4t_ms": 0.8345,
+  "speedup_x": 1.5362,
+  "quant_recipe": {
+    "per_channel": true,
+    "quant_format": "QDQ",
+    "activation_type": "QUInt8",
+    "weight_type": "QInt8",
+    "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/Teacher/training_results/ShuffleNetV2_x0_5/model_benchmark_pre.onnx",
+    "quant_pre_process": true,
+    "skip_first_conv": 0,
+    "nodes_to_quantize": null
+  }
+}
