@@ -1,8 +1,10 @@
 """
-Setup Environment — P-DARTS Palm Vein NAS
-==========================================
-Otomatis install semua dependensi yang diperlukan untuk menjalankan
-P-DARTS NAS, termasuk PyTorch dengan dukungan CUDA untuk NVIDIA RTX 5090.
+Setup Environment — Palm Vein NAS dan Lightweight Benchmark
+============================================================
+Memasang dependensi pendukung untuk P-DARTS dan benchmark model ringan,
+termasuk rekonstruksi model Ding et al. PyTorch dan torchvision sengaja
+tidak dipasang atau di-upgrade oleh script ini karena instalasinya harus
+disesuaikan lebih dahulu dengan CUDA/driver pada mesin eksperimen.
 
 Cara pakai:
     python setup_env.py
@@ -10,8 +12,8 @@ Cara pakai:
 Syarat sistem (untuk training GPU):
     - OS        : Linux (disarankan), Windows (WSL2), macOS (CPU/MPS only)
     - Python    : 3.10 / 3.11 / 3.12
-    - CUDA      : 12.6+ (untuk NVIDIA RTX 5090 / Blackwell sm_100)
-    - Driver    : >= 560.x (NVIDIA)
+    - PyTorch   : sudah terpasang dan dapat di-import
+    - torchvision: sudah terpasang dan kompatibel dengan PyTorch
 """
 
 import subprocess
@@ -136,80 +138,36 @@ def detect_platform() -> dict:
     }
 
 
-def get_torch_install_cmd(plat: dict) -> list[str]:
-    """
-    Tentukan perintah install PyTorch yang tepat sesuai platform.
-
-    RTX 5090 (Blackwell / sm_100) butuh:
-      PyTorch >= 2.6.0  +  CUDA 12.6
-    """
-    os_name      = plat["os"]
-    nvidia_avail = plat["nvidia"]
-    has_5090     = plat["has_5090"]
-
-    if os_name == "Darwin":
-        # macOS: Apple Silicon pakai MPS, Intel pakai CPU
-        arch = plat["arch"]
-        if arch == "arm64":
-            info("macOS Apple Silicon → install PyTorch dengan MPS support")
-        else:
-            info("macOS Intel → install PyTorch CPU")
-        # PyTorch 2.6 terbaru mendukung MPS di Apple Silicon
-        return [
-            sys.executable, "-m", "pip", "install", "--upgrade",
-            "torch>=2.6.0", "torchvision>=0.21.0",
-        ]
-
-    elif os_name == "Linux" or os_name == "Windows":
-        if nvidia_avail:
-            if has_5090:
-                # RTX 5090 (Blackwell sm_100) butuh PyTorch nightly + CUDA 12.8
-                # cu126 stable TIDAK bekerja di vast.ai tmux dengan RTX 5090
-                info("RTX 5090 terdeteksi → install PyTorch nightly CUDA 12.8")
-                return [
-                    sys.executable, "-m", "pip", "install", "--pre",
-                    "torch", "torchvision", "torchaudio",
-                    "--index-url", "https://download.pytorch.org/whl/nightly/cu128",
-                ]
-            else:
-                # GPU NVIDIA lain: pakai CUDA 12.4 (lebih stabil)
-                info("GPU NVIDIA terdeteksi → install PyTorch CUDA 12.4")
-                return [
-                    sys.executable, "-m", "pip", "install", "--upgrade",
-                    "torch>=2.5.0", "torchvision>=0.20.0",
-                    "--index-url", "https://download.pytorch.org/whl/cu124",
-                ]
-        else:
-            warn("Tidak ada GPU NVIDIA — install PyTorch CPU only")
-            return [
-                sys.executable, "-m", "pip", "install", "--upgrade",
-                "torch>=2.5.0", "torchvision>=0.20.0",
-                "--index-url", "https://download.pytorch.org/whl/cpu",
-            ]
-
-    else:
-        warn(f"OS tidak dikenal ({os_name}) — install PyTorch default")
-        return [
-            sys.executable, "-m", "pip", "install", "--upgrade",
-            "torch>=2.5.0", "torchvision>=0.20.0",
-        ]
-
-
-def install_pytorch(plat: dict):
-    """Install PyTorch + torchvision sesuai platform."""
-    bold("\n=== Install PyTorch ===")
-    cmd = get_torch_install_cmd(plat)
-    run(cmd)
+def require_existing_pytorch():
+    """Pastikan PyTorch tersedia tanpa memasang atau mengubah versinya."""
+    bold("\n=== Cek PyTorch yang Sudah Terpasang ===")
+    code = (
+        "import torch, torchvision; "
+        "print(f'PyTorch {torch.__version__} | torchvision {torchvision.__version__}')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        err("PyTorch/torchvision belum tersedia atau tidak kompatibel.")
+        print("    Script ini tidak memasang PyTorch secara otomatis.")
+        print("    Pasang build PyTorch yang sesuai CUDA/driver, lalu jalankan ulang.")
+        if result.stderr:
+            print(f"    {result.stderr.strip().splitlines()[-1]}")
+        sys.exit(1)
+    ok(result.stdout.strip())
+    info("PyTorch dan torchvision dipertahankan; tidak di-install/upgrade.")
 
 
 def install_dependencies():
-    """Install semua library Python yang dibutuhkan oleh P-DARTS."""
-    bold("\n=== Install Dependensi P-DARTS ===")
+    """Install dependensi selain PyTorch untuk training dan deployment."""
+    bold("\n=== Install Dependensi Pendukung Eksperimen ===")
 
     packages = [
         # Data & komputasi
         "numpy>=1.24",
         "Pillow>=10.0",
+        "opencv-python-headless>=4.8,<5",
 
         # Visualisasi
         "matplotlib>=3.7",
@@ -221,6 +179,10 @@ def install_dependencies():
         # Profiling (opsional, untuk measure_latency & count_flops)
         "thop>=0.1.1",            # FLOPs counter (digunakan di utils.py)
 
+        # Export, validasi, quantization, dan benchmark model terkompresi
+        "onnx>=1.14,<2",
+        "onnxruntime>=1.15,<2",
+
         # Download & compression
         "gdown>=5.0",             # Download from Google Drive
         "zipfile-deflate64>=0.2",  # ZIP support (zipfile bawaan juga built-in)
@@ -228,6 +190,7 @@ def install_dependencies():
         # Optional tapi berguna
         "scipy>=1.11",
         "scikit-learn>=1.3",
+        "timm>=1.0.0",
     ]
 
     pip(*packages)
@@ -251,6 +214,10 @@ def verify_installation(plat: dict):
         "matplotlib":  "import matplotlib; print(f'matplotlib {matplotlib.__version__}')",
         "seaborn":     "import seaborn as sns; print(f'seaborn {sns.__version__}')",
         "tqdm":        "import tqdm; print(f'tqdm {tqdm.__version__}')",
+        "cv2":         "import cv2; print(f'OpenCV {cv2.__version__}')",
+        "onnx":        "import onnx; print(f'ONNX {onnx.__version__}')",
+        "onnxruntime": "import onnxruntime as ort; print(f'ONNX Runtime {ort.__version__}')",
+        "thop":        "import thop; print('THOP OK')",
     }
 
     all_ok = True
@@ -350,7 +317,34 @@ def verify_project_imports():
     return all_ok
 
 
-def print_summary(plat: dict, install_ok: bool, import_ok: bool):
+def verify_ding_benchmark():
+    """Smoke test rekonstruksi Ding dan tool deployment benchmark."""
+    bold("\n=== Verifikasi Benchmark Ding ===")
+    benchmark_dir = Path(__file__).resolve().parent / "PalmVein_Lightweight_Benchmark"
+    code = """
+from src.models.ding import build_ding_baseline, build_ding_pruned, build_ding_pw
+from src.deployment.onnx_utils import create_session, validate_onnx_file
+models = [
+    build_ding_baseline(num_classes=834),
+    build_ding_pw(num_classes=834),
+    build_ding_pruned(num_classes=834),
+]
+print('Ding baseline/PW/pruned OK:', [sum(p.numel() for p in m.parameters()) for m in models])
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True,
+        cwd=str(benchmark_dir)
+    )
+    if result.returncode == 0:
+        ok(result.stdout.strip())
+        return True
+    err("Benchmark Ding gagal di-import")
+    for line in result.stderr.strip().splitlines()[-4:]:
+        print(f"    {line}")
+    return False
+
+
+def print_summary(plat: dict, install_ok: bool, import_ok: bool, ding_ok: bool):
     """Tampilkan ringkasan dan instruksi selanjutnya."""
     bold("\n" + "="*60)
     bold("  RINGKASAN SETUP")
@@ -361,19 +355,14 @@ def print_summary(plat: dict, install_ok: bool, import_ok: bool):
     info(f"RTX 5090     : {'✓ YA' if plat['has_5090'] else '✗ tidak terdeteksi'}")
     info(f"Library      : {'✓ semua terinstall' if install_ok else '✗ ada yang gagal'}")
     info(f"Modul Project: {'✓ semua bisa diimport' if import_ok else '✗ ada yang gagal'}")
+    info(f"Benchmark Ding: {'✓ siap' if ding_ok else '✗ ada yang gagal'}")
 
-    if install_ok and import_ok:
+    if install_ok and import_ok and ding_ok:
         ok("\nSetup SELESAI — semua siap!")
         bold("\nLangkah selanjutnya:")
-        print("  1. Jalankan P-DARTS search:")
-        print("       cd Student")
-        print("       python search.py")
-        print()
-        print("  2. Quick test (lebih cepat, 15 epoch per stage):")
-        print("       python search.py --epochs_per_stage 15 --batch_size 32")
-        print()
-        print("  3. Setelah search selesai, retrain:")
-        print("       python retrain.py --genotype nas_results/search/genotype_final.json")
+        print("  Jalankan validasi model benchmark:")
+        print("       cd PalmVein_Lightweight_Benchmark")
+        print("       python scripts/validate_models.py")
         print()
         if plat["has_5090"]:
             print("  [RTX 5090] Tips untuk performa maksimal:")
@@ -382,8 +371,8 @@ def print_summary(plat: dict, install_ok: bool, import_ok: bool):
             print("    - Export: CUDA_VISIBLE_DEVICES=0")
     else:
         err("\nAda masalah dalam setup. Cek error di atas.")
-        print("  - Pastikan CUDA Toolkit 12.6+ terinstall di sistem")
-        print("  - Pastikan driver NVIDIA >= 560.x")
+        print("  - Pastikan PyTorch/torchvision sudah terpasang dan kompatibel")
+        print("  - Untuk GPU, pastikan build PyTorch sesuai CUDA dan driver")
         print("  - Coba jalankan ulang: python setup_env.py")
 
     bold("="*60 + "\n")
@@ -393,19 +382,20 @@ def print_summary(plat: dict, install_ok: bool, import_ok: bool):
 
 def main():
     bold("╔══════════════════════════════════════════════════════╗")
-    bold("║  Setup Env — P-DARTS Palm Vein NAS                  ║")
-    bold("║  Target: NVIDIA RTX 5090 (CUDA 12.6 / Blackwell)   ║")
+    bold("║  Setup Env — Palm Vein NAS & Compression          ║")
+    bold("║  PyTorch existing environment (tidak di-install)    ║")
     bold("╚══════════════════════════════════════════════════════╝")
 
     check_python_version()
     plat = detect_platform()
+    require_existing_pytorch()
     upgrade_pip()
-    install_pytorch(plat)
     install_dependencies()
     install_ok = verify_installation(plat)
     verify_cuda(plat)
     import_ok = verify_project_imports()
-    print_summary(plat, install_ok, import_ok)
+    ding_ok = verify_ding_benchmark()
+    print_summary(plat, install_ok, import_ok, ding_ok)
 
 
 if __name__ == "__main__":
