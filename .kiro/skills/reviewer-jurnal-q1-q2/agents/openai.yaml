@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reviewer Jurnal Q1-Q2"
+  short_description: "Audit kesiapan dan mutu manuscript jurnal"
+  default_prompt: "Use $reviewer-jurnal-q1-q2 to audit this manuscript for scientific rigor and IJCCE submission readiness."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Penulis Jurnal Q1-Q2"
+  short_description: "Penulisan akademik bilingual berbasis bukti"
+  default_prompt: "Use $penulis-jurnal-q1-q2 to draft or revise this manuscript with evidence-bound scientific writing."

@@ -4,17 +4,21 @@ This repository is used for the thesis and experiments on Neural Architecture Se
 
 ## Mandatory Research and Writing Guidance
 
-For any task involving research design, experiment interpretation, thesis writing, academic review, manuscript polishing, Bab 3/Bab 4 revision, table narration, contribution claims, novelty assessment, or supervisor-facing explanations, always apply both local instruction sources below:
+For any task involving research design, experiment interpretation, thesis writing, academic review, manuscript polishing, Bab 3/Bab 4 revision, table narration, contribution claims, novelty assessment, or supervisor-facing explanations, start with the routing and integrity rules below:
 
 1. `.kiro/steering/research-advisor.md`
-   - Use this as the research-quality and critical-review persona.
+   - Use this as the always-on research-integrity guardrail and task router.
    - Challenge weak assumptions, separate facts from interpretation, and keep claims defensible.
-   - Use it especially when evaluating NAS, KD, quantization, Raspberry Pi deployment, SOTA comparison, ablation logic, or publication positioning.
 
 2. `.kiro/skills/penulis-jurnal-q1-q2/SKILL.md`
-   - Use this as the Indonesian academic writing and thesis-editing standard.
-   - Follow its EYD, academic tone, table/caption narration, claim-control, and technical-term italic rules.
-   - Before editing thesis text, check the section on `Aturan Italic Istilah Teknis`.
+   - Use for bilingual academic authoring, restructuring, translation, manuscript condensation, and language revision.
+   - Follow its evidence-first workflow, scientific-English rules, EYD, claim control, and technical-term italic rules.
+
+3. `.kiro/skills/reviewer-jurnal-q1-q2/SKILL.md`
+   - Use for editorial triage, novelty and methodology review, experiment/claim audit, and submission readiness.
+   - For final manuscripts, run this review before using the writer skill for revision.
+
+Before declaring any manuscript submission-ready, verify the current official guide of the target journal and publisher. Do not rely only on cached requirements, quartile, a similarity percentage, or an AI-detector score.
 
 ## Document Editing Rules
 

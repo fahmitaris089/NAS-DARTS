@@ -1,0 +1,34 @@
+{
+  "name": "chen_student_recon",
+  "status": "paper-constrained independent reconstruction",
+  "source_doi": "10.6688/JISE.202107_37(4).0005",
+  "paper_input_size": 256,
+  "paper_input_channels": 3,
+  "paper_num_classes": 400,
+  "paper_reported_parameters": 256779,
+  "reconstruction_reference_parameters": 405264,
+  "benchmark_input_size": 224,
+  "benchmark_input_channels": 3,
+  "benchmark_num_classes": 834,
+  "stem": {"out_channels": 32, "kernel_size": 3, "stride": 2, "max_pool": 2},
+  "flows": {
+    "input": [
+      {"in_channels": 32, "out_channels": 32, "stride": 2, "max_pool": 2},
+      {"in_channels": 32, "out_channels": 64, "stride": 1, "max_pool": 2}
+    ],
+    "middle": [
+      {"in_channels": 64, "out_channels": 64, "stride": 1, "max_pool": 2},
+      {"in_channels": 64, "out_channels": 96, "stride": 1},
+      {"in_channels": 96, "out_channels": 128, "stride": 1}
+    ],
+    "output": [
+      {"in_channels": 128, "out_channels": 256, "stride": 2},
+      {"in_channels": 256, "out_channels": 512, "stride": 1}
+    ]
+  },
+  "depthwise_kernel_size": 3,
+  "pointwise_kernel_size": 1,
+  "classifier": "adaptive_average_pool_then_linear",
+  "pretrained_available": false,
+  "training_protocol": "scratch_only"
+}
