@@ -1,0 +1,1 @@
+{"name":"mnasnet_a1","input_channels":3,"num_classes":834,"source_variant":"MnasNet-A1","audited_torchvision_version":"0.21.0","official_commit":"7af698794eded568735f9519593603c1ec889eba","torchvision_equivalence_check":true}

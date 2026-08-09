@@ -1,0 +1,21 @@
+{
+  "onnx_opset": 13,
+  "input_name": "input",
+  "output_name": "logits",
+  "dynamic_batch": true,
+  "quantization": {
+    "format": "QDQ",
+    "weight_type": "QInt8",
+    "activation_type": "QUInt8",
+    "per_channel": true,
+    "calibration_method": "MinMax"
+  },
+  "runtime": {
+    "provider": "CPUExecutionProvider",
+    "intra_op_threads": 4,
+    "inter_op_threads": 1,
+    "warmup_iterations": 50,
+    "benchmark_iterations": 500,
+    "batch_size": 1
+  }
+}

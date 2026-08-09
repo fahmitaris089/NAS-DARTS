@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+data/raw/*
+data/preprocessed/*
+data/calibration/*
+!data/raw/.gitkeep
+!data/preprocessed/.gitkeep
+!data/calibration/.gitkeep
+results/**/checkpoints/
+

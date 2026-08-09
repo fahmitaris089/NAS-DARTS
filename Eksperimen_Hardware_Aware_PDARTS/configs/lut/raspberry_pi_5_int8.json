@@ -1,0 +1,10 @@
+{
+  "device": "Raspberry Pi 5",
+  "runtime": "ONNX Runtime CPU",
+  "threads": 4,
+  "warmup_iterations": 20,
+  "measurement_iterations": 100,
+  "precision": "INT8",
+  "output": "results/lut/latency_lut_pi_int8_corrected.json"
+}
+

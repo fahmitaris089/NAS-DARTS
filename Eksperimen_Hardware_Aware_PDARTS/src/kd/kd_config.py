@@ -1,0 +1,236 @@
+"""
+Knowledge Distillation Configuration
+=====================================
+Semua hyperparameter KD dipusatkan di sini.
+Edit nilai-nilai ini sebelum menjalankan kd_train.py.
+
+Metode yang dipakai: Hinton KD (2015)
+  Loss = alpha * CE(logits_student, hard_labels)
+       + (1-alpha) * T^2 * KL(softmax(logits_student/T) || softmax(logits_teacher/T))
+
+  - alpha   : bobot CE (hard target)  vs KD (soft target)
+  - T       : temperature — makin besar, distribusi teacher makin "lembut"
+              sehingga informasi inter-class lebih banyak ditransfer
+"""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# ─── Root paths ──────────────────────────────────────────────────────────────
+
+_HERE        = Path(__file__).resolve().parent
+_PROJECT_ROOT = _HERE.parents[1]
+_STUDENT_DIR = _PROJECT_ROOT
+
+
+@dataclass
+class KDConfig:
+    # ── Teacher ──────────────────────────────────────────────────────────────
+    teacher_arch: str = "efficientnet_v2_m"
+    # Path ke best_model.pth teacher (state_dict langsung)
+    teacher_weights: str = str(_PROJECT_ROOT / "checkpoints" / "teacher" / "EfficientNetV2M_best_model.pth")
+    teacher2_arch: str = "mobilenet_v3_small"
+    teacher2_weights: str = ""
+
+    # ── Student ──────────────────────────────────────────────────────────────
+    # Genotype diambil dari retrain/config.json (bukan dari file json terpisah)
+    student_config_path: str = str(_PROJECT_ROOT / "checkpoints" / "student" / "retraining" / "config.json")
+    # Pretrained student weights (hasil retrain terbaik)
+    student_weights: str    = str(_PROJECT_ROOT / "checkpoints" / "student" / "retraining" / "L0.05_C12_cells10_best_model.pth")
+    student_C_init: int     = 8
+    student_num_cells: int  = 8
+    num_classes: int        = 834
+    student_dropout: float  = 0.3
+
+    # ── Dataset ──────────────────────────────────────────────────────────────
+    data_dir: str     = str(_PROJECT_ROOT / "data" / "preprocessed")
+    split_path: str   = str(_PROJECT_ROOT / "data" / "splits" / "split_info.json")
+    input_size: int   = 224
+    batch_size: int   = 64
+    num_workers: int  = 4
+    cutout_length: int = 16      # sama dengan retrain untuk konsistensi augmentasi
+    augmentation_policy: str = "v1_legacy"
+    train_sampler: str = "random"  # "random" or "pk"
+    pk_p: int = 16                 # identities per PK batch
+    pk_k: int = 4                  # samples per identity in PK batch
+
+    # ── MixUp / CutMix ───────────────────────────────────────────────────────
+    # Batch-level augmentasi — meningkatkan generalisasi student
+    # Set mixup_alpha=0 DAN cutmix_alpha=0 untuk disable sepenuhnya
+    mixup_alpha: float      = 0.8   # Beta distribution param untuk MixUp (0=off)
+    cutmix_alpha: float     = 1.0   # Beta distribution param untuk CutMix (0=off)
+    mix_prob: float         = 1.0   # Probability menerapkan mix per batch (1.0=selalu)
+    mix_switch_prob: float  = 0.5   # Prob memilih CutMix vs MixUp (0.5=50/50)
+
+    # ── KD Hyperparameters ──────────────────────────────────────────────────
+    # Temperature τ: mengontrol "kelembuatan" distribusi teacher
+    #   τ=1  → distribusi asli (sharp)
+    #   τ=4  → distribusi lebih rata → lebih banyak informasi inter-class
+    #   Rekomendasi untuk dataset fine-grained (834 class): τ=4.0
+    temperature: float = 20.0
+
+    # Alpha: weight untuk CE loss (hard targets)
+    #   alpha=0.0 → pure KD (hanya soft target)
+    #   alpha=1.0 → pure CE (seperti retrain biasa)
+    #   alpha=0.3 → 70% KD + 30% CE  ← recommended
+    alpha: float = 0.5
+
+    # Method: "hinton" preserves the original logit KD path. "pairwise",
+    # "embedding", and "hybrid" use biometric embedding/relation KD.
+    kd_method: str = "hinton"
+    ce_weight: float = 1.0
+    relation_weight: float = 0.05
+    embedding_weight: float = 0.0
+    logit_kd_weight: float = 0.0
+    topk_k: int = 5
+    topk_weight: float = 0.05
+    margin_weight: float = 0.10
+    margin_m: float = 0.10
+    hard_weight: float = 2.0
+    hard_margin_threshold: float = 0.20
+    teacher_conf_threshold: float = 0.50
+    anchor_weights: str = ""          # default kosong -> pakai student_weights
+    anchor_weight: float = 0.75       # KL ke checkpoint awal agar boundary tidak bergeser jauh
+    anchor_temperature: float = 2.0
+    teacher1_weight: float = 0.01
+    teacher2_weight: float = 0.05
+    teacher2_conf_threshold: float = 0.05
+    teacher_agree_bonus: float = 1.5
+    teacher_disagree_policy: str = "teacher2_only"
+    topkd_mode: str = "lite"          # "lite" or "full"
+    topkd_k: int = 20
+    topkd_ce_weight: float = 1.0
+    topkd_tdl_weight: float = 0.5
+    topkd_contrast_weight: float = 0.05
+    topkd_scale: float = 2.0
+    topkd_temperature: float = 0.0    # 0.0 -> follow temperature
+    topkd_include_gt: bool = True
+
+    # ── Optimiser ────────────────────────────────────────────────────────────
+    epochs: int          = 150
+    lr: float            = 3e-4     # learning rate awalan (fine-tuning dari pretrained)
+    lr_min: float        = 1e-6     # cosine annealing min LR
+    weight_decay: float  = 0.02
+    warmup_epochs: int   = 5        # warm-up linear LR sebelum cosine
+
+    # ── LR Scheduler ─────────────────────────────────────────────────────────
+    # "cosine"  → standard cosine annealing (default)
+    # "sgdr"    → cosine annealing with warm restarts (SGDR)
+    scheduler: str       = "cosine"
+    sgdr_T0: int         = 50       # epoch per cycle pertama (SGDR only)
+    sgdr_T_mult: int     = 2        # multiplier panjang cycle berikutnya
+
+    # ── Drop path selama KD ──────────────────────────────────────────────────
+    drop_path_prob: float = 0.1     # lebih kecil dari retrain (0.2) karena sudah pretrained
+
+    # ── Label smoothing pada CE component dari KD loss ───────────────────────
+    # Catatan: KD soft labels sudah berfungsi sebagai regularizer, sehingga
+    # label_smoothing tambahan bisa menyebabkan over-regularization (double smoothing).
+    # Set 0.0 untuk menonaktifkan (recommended saat KD aktif).
+    label_smoothing: float = 0.1
+
+    # ── Output ───────────────────────────────────────────────────────────────
+    output_dir: str = str(_PROJECT_ROOT / "results" / "kd")
+    log_interval: int = 10          # print setiap N batch
+
+    # ── Misc ─────────────────────────────────────────────────────────────────
+    seed: int          = 42
+    device: str        = "auto"     # "auto" → pakai cuda jika tersedia
+    amp: bool          = True       # Automatic Mixed Precision (lebih cepat di GPU)
+    no_pretrained_student: bool = False  # True → student inisialisasi random (from scratch)
+    freeze_bn: bool = False              # True → BN pakai running stats pretrained saat KD
+
+# Instance default — langsung di-import
+KD_CFG = KDConfig()
+
+
+# ─── Helper: print config ─────────────────────────────────────────────────────
+
+def print_config(cfg: KDConfig) -> None:
+    print("\n" + "=" * 60)
+    print("  Knowledge Distillation Config")
+    print("=" * 60)
+    print(f"  Teacher         : {cfg.teacher_arch}")
+    print(f"  Teacher weights : {cfg.teacher_weights}")
+    if cfg.kd_method == "conservative_multiteacher":
+        print(f"  Teacher 2       : {cfg.teacher2_arch}")
+        print(f"  Teacher 2 weights: {cfg.teacher2_weights}")
+    print(f"  Student C_init  : {cfg.student_C_init}  |  num_cells: {cfg.student_num_cells}")
+    print(f"  Student weights : {cfg.student_weights}")
+    print(f"  Num classes     : {cfg.num_classes}")
+    print()
+    print(f"  Temperature (τ) : {cfg.temperature}")
+    print(f"  Alpha (CE weight): {cfg.alpha}  → KD weight: {1 - cfg.alpha:.1f}")
+    print(f"  KD method       : {cfg.kd_method}")
+    print(
+        f"  BioKD weights   : CE={cfg.ce_weight}  relation={cfg.relation_weight}  "
+        f"embedding={cfg.embedding_weight}  logit_kd={cfg.logit_kd_weight}"
+    )
+    if cfg.kd_method == "hard_topk":
+        print(
+            f"  HardTopK KD     : topk={cfg.topk_k}  topk_w={cfg.topk_weight}  "
+            f"margin_w={cfg.margin_weight}  margin_m={cfg.margin_m}  "
+            f"hard_w={cfg.hard_weight}"
+        )
+        print(
+            f"                    hard_margin={cfg.hard_margin_threshold}  "
+            f"teacher_conf={cfg.teacher_conf_threshold}"
+        )
+    if cfg.kd_method == "conservative":
+        print(
+            f"  Conservative KD : topk={cfg.topk_k}  topk_w={cfg.topk_weight}  "
+            f"margin_w={cfg.margin_weight}  margin_m={cfg.margin_m}"
+        )
+        print(
+            f"                    anchor_w={cfg.anchor_weight}  "
+            f"anchor_T={cfg.anchor_temperature}"
+        )
+        print(f"                    anchor_weights={cfg.anchor_weights or cfg.student_weights}")
+    if cfg.kd_method == "conservative_multiteacher":
+        print(
+            f"  ConsMT KD       : topk={cfg.topk_k}  t1_w={cfg.teacher1_weight}  "
+            f"t2_w={cfg.teacher2_weight}"
+        )
+        print(
+            f"                    t2_conf={cfg.teacher2_conf_threshold}  "
+            f"agree_bonus={cfg.teacher_agree_bonus}  policy={cfg.teacher_disagree_policy}"
+        )
+        print(
+            f"                    anchor_w={cfg.anchor_weight}  "
+            f"anchor_T={cfg.anchor_temperature}"
+        )
+        print(f"                    anchor_weights={cfg.anchor_weights or cfg.student_weights}")
+    if cfg.kd_method == "topkd":
+        print(
+            f"  Top-KD          : mode={cfg.topkd_mode}  K={cfg.topkd_k}  "
+            f"CE={cfg.topkd_ce_weight}  TDL={cfg.topkd_tdl_weight}  "
+            f"contrast={cfg.topkd_contrast_weight}"
+        )
+        print(
+            f"                    scale={cfg.topkd_scale}  "
+            f"T={cfg.topkd_temperature or cfg.temperature}  include_gt={cfg.topkd_include_gt}"
+        )
+    print()
+    print(f"  Epochs          : {cfg.epochs}")
+    print(f"  Batch size      : {cfg.batch_size}")
+    print(f"  CutOut length   : {cfg.cutout_length}")
+    print(f"  Aug policy      : {cfg.augmentation_policy}")
+    print(f"  Train sampler   : {cfg.train_sampler}")
+    if cfg.train_sampler == "pk":
+        print(f"  PK sampler      : P={cfg.pk_p}  K={cfg.pk_k}  effective batch={cfg.pk_p * cfg.pk_k}")
+    sched_desc = cfg.scheduler
+    if cfg.scheduler == "sgdr":
+        sched_desc += f"  T0={cfg.sgdr_T0}  T_mult={cfg.sgdr_T_mult}"
+    print(f"  LR              : {cfg.lr}  →  {cfg.lr_min} ({sched_desc})")
+    print(f"  Weight decay    : {cfg.weight_decay}")
+    print(f"  Warmup epochs   : {cfg.warmup_epochs}")
+    print(f"  Drop path prob  : {cfg.drop_path_prob}")
+    print(f"  Freeze BN       : {cfg.freeze_bn}")
+    print(f"  AMP             : {cfg.amp}")
+    # MixUp / CutMix
+    mix_enabled = cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0
+    print(f"  MixUp alpha     : {cfg.mixup_alpha}  |  CutMix alpha: {cfg.cutmix_alpha}")
+    print(f"  Mix prob        : {cfg.mix_prob}  |  Switch prob : {cfg.mix_switch_prob}")
+    print(f"  Mix enabled     : {mix_enabled}")
+    print(f"  Output dir      : {cfg.output_dir}")
+    print("=" * 60 + "\n")

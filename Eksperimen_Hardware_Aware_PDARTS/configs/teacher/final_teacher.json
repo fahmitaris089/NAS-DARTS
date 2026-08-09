@@ -1,0 +1,7 @@
+{
+  "architecture": "efficientnet_v2_m",
+  "num_classes": 834,
+  "selection_basis": ["test_accuracy", "best_validation_loss", "representation_capacity"],
+  "checkpoint": "checkpoints/teacher/EfficientNetV2M_best_model.pth"
+}
+

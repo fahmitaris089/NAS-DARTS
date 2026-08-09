@@ -1,0 +1,4 @@
+{
+  "name":"pdarts_l005_c12_cells10","input_channels":3,"num_classes":834,"source_repository_commit":"f940a8ed04693dea3f0a887b3ef0fe3140ef482b","C_init":12,"num_cells":10,"stem_downsample":8,"reduction_indices":[3,7],"auxiliary":false,"dropout":0.0,"drop_path_probability":0.0,
+  "genotype":{"normal":[["rep_conv_3x3",1],["rep_conv_3x3",0],["skip_connect",1],["rep_conv_3x3",2],["dil_conv_3x3",1],["dil_conv_3x3",0],["skip_connect",1],["dil_conv_3x3",0]],"normal_concat":[2,3,4,5],"reduce":[["dil_conv_3x3",1],["rep_conv_3x3",0],["rep_conv_3x3",0],["skip_connect",1],["rep_conv_3x3",0],["rep_conv_3x3",1],["rep_conv_3x3",4],["rep_conv_3x3",3]],"reduce_concat":[2,3,4,5]}
+}

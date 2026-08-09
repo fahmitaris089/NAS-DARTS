@@ -1,0 +1,9 @@
+{
+  "roi_method": "gradient_based_palm_center_with_intensity_weighted_centroid",
+  "roi_size": 384,
+  "clahe_clip_limit": 2.0,
+  "clahe_tile_grid": [8, 8],
+  "normalization": "min_max_0_255",
+  "output_size": [224, 224]
+}
+

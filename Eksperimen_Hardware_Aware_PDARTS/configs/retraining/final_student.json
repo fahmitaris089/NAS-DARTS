@@ -1,0 +1,10 @@
+{
+  "lambda": 0.05,
+  "genotype": "results/search/search_hwint8_l0.05/genotype_final.json",
+  "C_init": 12,
+  "num_cells": 10,
+  "stem_downsample": 8,
+  "num_classes": 834,
+  "checkpoint": "checkpoints/student/retraining/L0.05_C12_cells10_best_model.pth"
+}
+

@@ -1,0 +1,9 @@
+{
+  "teacher": "EfficientNetV2M",
+  "student": "L0.05 C12 cells10",
+  "temperature": 20,
+  "alpha": 0.5,
+  "method": "Hinton KD",
+  "checkpoint": "checkpoints/student/kd/L0.05_C12_cells10_T20_A05_best_model.pth"
+}
+

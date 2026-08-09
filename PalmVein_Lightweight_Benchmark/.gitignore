@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+artifacts/checkpoints/**/*.pth
+artifacts/onnx_fp32/*.onnx
+artifacts/onnx_int8/*.onnx
+results/scratch/*/
+results/pretrained/*/
+results/deployment/*.json

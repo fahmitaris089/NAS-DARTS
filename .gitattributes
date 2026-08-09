@@ -1,0 +1,3 @@
+# Preserve the thesis split byte-for-byte (CRLF included) and avoid a noisy
+# 34k-line textual diff for this immutable data manifest.
+PalmVein_Lightweight_Benchmark/dataset/splits/split_info.json -diff

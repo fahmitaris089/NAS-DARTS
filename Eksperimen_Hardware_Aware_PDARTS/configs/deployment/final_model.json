@@ -1,0 +1,12 @@
+{
+  "input_shape": [1, 3, 224, 224],
+  "opset": 13,
+  "quantization": "static PTQ QDQ",
+  "weight_type": "QInt8 per-channel",
+  "activation_type": "QUInt8",
+  "calibration_images": 834,
+  "threads": 4,
+  "fp32_model": "models/onnx_fp32/NAS_L0.05_C12_cells10_KD.onnx",
+  "int8_model": "models/onnx_int8/NAS_L0.05_C12_cells10_KD_INT8.onnx"
+}
+

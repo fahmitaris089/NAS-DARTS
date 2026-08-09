@@ -1,0 +1,1 @@
+{"name":"ding_pruned","input_channels":3,"num_classes":834,"status":"paper-constrained independent reconstruction","reference_input_channels":1,"reference_num_classes":500,"reference_parameters":93000,"tolerance_fraction":0.05}

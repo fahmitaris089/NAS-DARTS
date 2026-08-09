@@ -1,0 +1,25 @@
+{
+  "protocol": "scratch",
+  "epochs": 600,
+  "seeds": [42, 123, 2026],
+  "optimizer": "AdamW",
+  "learning_rate": 0.001,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "warmup_start_factor": 0.01,
+  "minimum_learning_rate": 0.000001,
+  "batch_size": 64,
+  "label_smoothing": 0.2,
+  "gradient_clip_norm": 1.0,
+  "num_workers": 4,
+  "augmentation": {
+    "horizontal_flip": false,
+    "rotation_degrees": 5,
+    "translate": 0.03,
+    "scale": [0.97, 1.08],
+    "brightness": 0.08,
+    "contrast": 0.05
+  },
+  "checkpoint_selection": "minimum_validation_loss",
+  "evaluate_test_once": true
+}

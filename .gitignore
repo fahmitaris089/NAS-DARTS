@@ -4,6 +4,11 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 build/
 develop-eggs/
 dist/
@@ -19,11 +24,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-*.docx
-figures_bab2/
-figures_bab3/
-figures_bab4/
-
 
 # Virtual Environment
 .venv/
@@ -41,19 +41,48 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+.AppleDouble
+.LSOverride
+
+# Local documents and office exports
+*.doc
+*.docx
+*.pdf
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+*.odt
+*.ods
+~$*
 
 # Model files (too large for git)
 *.pth
 *.pt
 *.onnx
+*.tflite
+*.engine
+*.safetensors
 *.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
 *.npy
+*.npz
 
 # Large data files
 *.h5
 *.hdf5
 *.pkl
 *.pickle
+
+# Local datasets and generated data links
+preprocessed_results/
+dataset_multi_distance/
+data_symlinks/
+**/data_symlinks/
 
 # Logs
 *.log
@@ -66,7 +95,23 @@ logs/
 # Results and outputs
 results/
 outputs/
+output/
 checkpoints/
+artifacts/checkpoints/
+artifacts/onnx_fp32/
+artifacts/onnx_int8/
+**/kd_results_new/
+tmp/
+work/
+.mplconfig/
+**/.mplconfig/
+
+# Local backups and thesis exports
+backup*/
+*backup*/
+figures_bab2/
+figures_bab3/
+figures_bab4/
 
 # Generated images / plots
 *.png
@@ -77,3 +122,4 @@ checkpoints/
 *.tiff
 *.gif
 *.webp
+*.svg
