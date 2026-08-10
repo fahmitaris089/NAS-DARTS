@@ -1,1 +1,16 @@
-{"name":"ding_pruned","input_channels":3,"num_classes":834,"status":"paper-constrained independent reconstruction","reference_input_channels":1,"reference_num_classes":500,"reference_parameters":93000,"tolerance_fraction":0.05}
+{
+  "name": "ding_pruned",
+  "input_channels": 3,
+  "num_classes": 834,
+  "status": "paper-constrained independent reconstruction",
+  "paper_reference": {
+    "input_channels": 1,
+    "num_classes": 500,
+    "blocks": 6,
+    "channels": [22, 22, 44, 44, 89, 89],
+    "bottleneck_channels": [null, null, null, 22, 11, 44],
+    "last_max_pool": "omitted because Table II's final MaxPool conflicts with its reported 7x7 AvgPool input"
+  },
+  "benchmark_adaptation": "grayscale replicated to three channels; classifier changed to 834 classes",
+  "normalization": "ImageNet mean/std shared by all benchmark models"
+}

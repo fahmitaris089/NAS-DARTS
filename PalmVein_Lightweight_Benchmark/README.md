@@ -1,18 +1,32 @@
 # PalmVein Lightweight Benchmark
 
-Repositori eksperimen mandiri untuk membandingkan tujuh arsitektur ringan pada split palm vein yang sama. Kode di folder ini tidak mengimpor modul proyek tesis di direktori induk. Satu-satunya sumber daya eksternal lokal adalah citra pada `../preprocessed_results`, yang memang tidak disalin.
+Repositori eksperimen mandiri untuk membandingkan arsitektur ringan pada split palm vein yang sama. Kode di folder ini tidak mengimpor modul proyek tesis di direktori induk. Satu-satunya sumber daya eksternal lokal adalah citra pada `../preprocessed_results`, yang memang tidak disalin. Model `mnasnet_b1_torchvision` dipertahankan sebagai eksperimen transfer tambahan agar hasil lama tidak hilang setelah koreksi identitas varian MnasNet.
 
 ## Model
 
 - `proxylessnas_mobile`
 - `fbnet_c`
 - `mnasnet_a1`
+- `mnasnet_b1_torchvision` (hasil transfer lama; bukan pembanding scratch utama)
 - `ding_baseline`
 - `ding_pw`
 - `ding_pruned`
 - `pdarts_l005_c12_cells10`
+- `palmnet_05x_2413`
+- `palmnet_05x_2411`
 
-Tiga model Ding adalah **paper-constrained independent reconstruction**, bukan implementasi resmi. Status, sumber, perubahan classifier, dan asumsi teknis dijelaskan dalam [`docs/MODEL_PROVENANCE.md`](docs/MODEL_PROVENANCE.md).
+MnasNet-A1 merupakan implementasi lokal berdasarkan struktur A1 yang diterbitkan pada paper dan digunakan hanya pada protokol scratch. MnasNet-B1 mempertahankan topologi `torchvision.mnasnet1_0` serta hasil transfer lama. Tiga model Ding dan dua model PalmNet utama merupakan rekonstruksi independen yang dibatasi oleh struktur paper, bukan implementasi resmi. Implementasi Ding lima blok yang lama diarsipkan dan tidak masuk ringkasan utama. Status, sumber, perubahan classifier, dan asumsi teknis dijelaskan dalam [`docs/MODEL_PROVENANCE.md`](docs/MODEL_PROVENANCE.md).
+
+Varian PalmNet lain yang tercantum pada tabel paper juga dapat dipilih secara eksplisit: `palmnet_05x_2223`, `palmnet_05x_4223`, `palmnet_05x_6223`, `palmnet_05x_2323`, `palmnet_05x_2313`, `palmnet_05x_2412`, `palmnet_10x_2413`, dan `palmnet_20x_2413`. Varian tersebut tidak dijalankan oleh opsi `--models all`.
+
+Untuk menjalankan ulang ketiga rekonstruksi Ding setelah validasi arsitektur:
+
+```bash
+python scripts/run_experiments.py \
+  --protocol scratch \
+  --models ding_baseline ding_pw ding_pruned \
+  --seeds 42 123 2026
+```
 
 ## Persiapan
 
@@ -35,7 +49,7 @@ Satu eksperimen scratch:
 python scripts/train.py --model fbnet_c --protocol scratch --seed 42
 ```
 
-Matriks utama, tujuh model × tiga seed:
+Matriks utama, sembilan model × tiga seed:
 
 ```bash
 python scripts/run_experiments.py \
@@ -49,11 +63,20 @@ Analisis pralatih terpisah:
 ```bash
 python scripts/run_experiments.py \
   --protocol pretrained \
-  --models proxylessnas_mobile fbnet_c mnasnet_a1 \
+  --models proxylessnas_mobile fbnet_c mnasnet_b1_torchvision \
   --seeds 42 123 2026
 ```
 
 Pemanggilan pretrained untuk Ding atau P-DARTS berhenti dengan pesan `N/A`; kode tidak membuat bobot pralatih sintetis.
+
+PalmNet hanya mendukung protokol scratch. Eksperimen dua konfigurasi utamanya dapat dijalankan secara terpisah setelah validasi:
+
+```bash
+python scripts/run_experiments.py \
+  --protocol scratch \
+  --models palmnet_05x_2413 palmnet_05x_2411 \
+  --seeds 42 123 2026
+```
 
 ## ONNX, PTQ, dan Raspberry Pi
 

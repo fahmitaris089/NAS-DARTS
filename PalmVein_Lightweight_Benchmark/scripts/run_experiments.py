@@ -9,7 +9,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.models import MODEL_NAMES
+from src.models import MODEL_NAMES, PRIMARY_MODEL_NAMES
 from src.models.factory import PRETRAINED_MODELS
 
 
@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--device", default="auto")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    models = list(MODEL_NAMES) if args.models == ["all"] else args.models
+    models = list(PRIMARY_MODEL_NAMES) if args.models == ["all"] else args.models
     unknown = sorted(set(models) - set(MODEL_NAMES))
     if unknown:
         raise SystemExit(f"Unknown models: {unknown}")

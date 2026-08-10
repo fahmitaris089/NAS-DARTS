@@ -63,6 +63,8 @@ def main():
         "parameters": count_parameters(model),
         "split_sha256": validation["split_sha256"],
     }
+    if hasattr(model, "reconstruction_metadata"):
+        metadata["architecture_reconstruction"] = model.reconstruction_metadata()
     run_config = {
         **metadata,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),

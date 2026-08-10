@@ -6,5 +6,7 @@ onnx>=1.14,<2
 onnxruntime>=1.15,<2
 opencv-python-headless>=4.8,<5
 thop>=0.1.1
+# Independent structural oracle for the local MnasNet-A1 audit.
+timm==1.0.27
 # Official Meta Mobile Vision implementation used only by --protocol pretrained.
 mobile-cv @ git+https://github.com/facebookresearch/mobile-vision.git@7ed7e9177482140f58b5a56cc1acf54ecb4c1326

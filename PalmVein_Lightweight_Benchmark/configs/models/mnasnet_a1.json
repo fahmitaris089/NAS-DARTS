@@ -1,1 +1,12 @@
-{"name":"mnasnet_a1","input_channels":3,"num_classes":834,"source_variant":"MnasNet-A1","audited_torchvision_version":"0.21.0","official_commit":"7af698794eded568735f9519593603c1ec889eba","torchvision_equivalence_check":true}
+{
+  "name": "mnasnet_a1",
+  "display_name": "MnasNet-A1",
+  "input_channels": 3,
+  "num_classes": 834,
+  "source_variant": "MnasNet-A1, Figure 7",
+  "implementation_status": "paper-constrained local implementation",
+  "pretrained_protocol": false,
+  "reference_parameters_1000_classes": 3887038,
+  "adapted_parameters_834_classes": 3674392,
+  "independent_structure_oracle": "timm==1.0.27 semnasnet_100"
+}

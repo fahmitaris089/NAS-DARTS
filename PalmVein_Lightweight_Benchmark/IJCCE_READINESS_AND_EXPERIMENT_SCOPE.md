@@ -278,7 +278,8 @@ Semua model dilatih dari inisialisasi acak selama maksimum 600 epoch dengan *see
 7. FBNet-C;
 8. MnasNet-A1;
 9. satu model Ding utama yang didefinisikan sebelum eksperimen;
-10. AMPVNet jika implementasi resmi atau implementasi tervalidasi telah tersedia.
+10. PalmNet-0.5x2413 sebagai rekonstruksi domain utama;
+11. PalmNet-0.5x2411 sebagai pembanding efisiensi tambahan.
 
 Semua model harus menggunakan:
 
@@ -299,6 +300,8 @@ Catatan untuk Ding: `ding_baseline`, `ding_pw`, dan `ding_pruned` tidak boleh di
 
 Catatan untuk AMPVNet: model hanya boleh disebut implementasi resmi jika kode atau bobot benar-benar berasal dari penulis. Jika implementasi direkonstruksi, provenance dan deviasi arsitektur harus dijelaskan.
 
+Catatan untuk PalmNet: kedua varian merupakan *paper-constrained independent reconstruction*. Detail kanal, stride, stem, dan SE yang tidak diterbitkan harus dilaporkan sebagai keputusan rekonstruksi, sedangkan angka parameter/FLOPs paper hanya digunakan sebagai diagnostik.
+
 ### 9.3 Eksperimen 2 — perbandingan praktis dengan *pretrained baseline*
 
 Model yang memiliki bobot ImageNet publik dan dapat diverifikasi dilatih menggunakan *fine-tuning* selama maksimum 200 epoch dengan tiga *seed*:
@@ -308,7 +311,7 @@ Model yang memiliki bobot ImageNet publik dan dapat diverifikasi dilatih menggun
 3. EfficientNetLite0;
 4. ProxylessNAS-Mobile;
 5. FBNet-C;
-6. MnasNet-A1;
+6. MnasNet-B1 (`torchvision.mnasnet1_0`);
 7. EfficientNetV2M sebagai *teacher*/referensi kapasitas besar.
 
 Tabel *pretrained* harus dipisahkan dari tabel *scratch*. P-DARTS L0.05 dapat ditampilkan sebagai baris referensi dari hasil *scratch* atau KD, tetapi tidak boleh diberi label *pretrained* karena tidak memiliki bobot ImageNet yang setara.

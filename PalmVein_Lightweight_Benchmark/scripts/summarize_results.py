@@ -22,6 +22,22 @@ def write_csv(path: Path, rows: list[dict], fieldnames: list[str]):
         writer.writerows(rows)
 
 
+def resolve_checkpoint(row: dict) -> Path | None:
+    recorded = Path(row.get("best_checkpoint", ""))
+    candidates = []
+    if str(recorded):
+        candidates.append(recorded if recorded.is_absolute() else PROJECT_ROOT / recorded)
+    candidates.append(
+        PROJECT_ROOT
+        / "artifacts/checkpoints"
+        / str(row["protocol"])
+        / str(row["model"])
+        / f"seed_{row['seed']}"
+        / "best.pth"
+    )
+    return next((path for path in candidates if path.exists()), None)
+
+
 def fp32_summary(protocol: str):
     validation = {}
     validation_path = PROJECT_ROOT / "results/model_validation/model_spec_validation.csv"
@@ -40,7 +56,7 @@ def fp32_summary(protocol: str):
     output = []
     for model, rows in sorted(grouped.items()):
         accuracies = [float(row["test"]["accuracy"]) for row in rows]
-        checkpoints = [Path(row["best_checkpoint"]) for row in rows]
+        checkpoints = [path for row in rows if (path := resolve_checkpoint(row)) is not None]
         output.append({
             "model": model, "protocol": protocol, "seeds_completed": len(rows),
             "seeds": " ".join(str(row["seed"]) for row in sorted(rows, key=lambda item: item["seed"])),
@@ -48,7 +64,7 @@ def fp32_summary(protocol: str):
             "accuracy_sample_std": statistics.stdev(accuracies) if len(accuracies) > 1 else 0.0,
             "parameters": rows[0]["parameters"],
             "mmacs_224": validation.get(model, {}).get("mmacs_224", ""),
-            "checkpoint_bytes_mean": statistics.mean(path.stat().st_size for path in checkpoints if path.exists()),
+            "checkpoint_bytes_mean": statistics.mean(path.stat().st_size for path in checkpoints) if checkpoints else "",
             "onnx_fp32_bytes_mean": statistics.mean(onnx_sizes[model]) if onnx_sizes[model] else "",
         })
     return output

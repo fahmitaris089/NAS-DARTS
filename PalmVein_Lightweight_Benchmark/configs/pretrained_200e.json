@@ -1,6 +1,6 @@
 {
   "protocol": "pretrained",
-  "eligible_models": ["proxylessnas_mobile", "fbnet_c", "mnasnet_a1"],
+  "eligible_models": ["proxylessnas_mobile", "fbnet_c", "mnasnet_b1_torchvision"],
   "epochs": 200,
   "seeds": [42, 123, 2026],
   "freeze_backbone_epochs": 5,

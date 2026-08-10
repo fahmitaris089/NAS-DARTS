@@ -1,0 +1,14 @@
+{
+  "name": "mnasnet_b1_torchvision",
+  "display_name": "MnasNet-B1 (torchvision mnasnet1_0)",
+  "input_channels": 3,
+  "num_classes": 834,
+  "source_variant": "torchvision mnasnet1_0",
+  "implementation_status": "local topology audited against torchvision",
+  "audited_torchvision_version": "0.21.0",
+  "official_commit": "7af698794eded568735f9519593603c1ec889eba",
+  "torchvision_equivalence_check": true,
+  "pretrained_protocol": true,
+  "reference_parameters_1000_classes": 4383312,
+  "adapted_parameters_834_classes": 4170666
+}

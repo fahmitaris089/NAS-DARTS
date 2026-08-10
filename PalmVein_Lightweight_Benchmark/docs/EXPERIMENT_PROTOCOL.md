@@ -21,9 +21,11 @@ Benchmark utama menguji perbedaan kualitas arsitektur ketika sumber bobot awal, 
 
 P-DARTS menggunakan `drop_path_probability=0` dan tanpa auxiliary loss agar protokol tidak memberi regularizer tambahan yang tidak dinyatakan kepada satu model saja. Keputusan ini menjaga kontrol eksperimen, tetapi berbeda dari resep retraining DARTS yang lazim dan harus disebutkan saat membandingkan dengan angka tesis lama.
 
+Matriks scratch utama memuat P-DARTS L0.05, ProxylessNAS-Mobile, FBNet-C, MnasNet-A1, tiga tahap rekonstruksi Ding, serta `PalmNet-0.5x2413` dan `PalmNet-0.5x2411`. Dua PalmNet tersebut adalah rekonstruksi independen berbasis paper. Varian PalmNet lain dapat dibangun melalui CLI, tetapi tidak dijalankan oleh pilihan `--models all`. Chen StudentNet tetap menjadi artefak audit yang tidak terdaftar dan tidak masuk tabel benchmark utama.
+
 ## Pretrained sekunder
 
-Hanya ProxylessNAS-Mobile, FBNet-C, dan MnasNet-A1. Backbone dibekukan lima epoch. Classifier memakai learning rate `1e-3`; setelah unfreeze, backbone memakai `1e-4`. Pelatihan berlangsung 200 epoch dengan aturan checkpoint/test yang sama. Hasil ini dilaporkan terpisah karena mengukur transfer learning, bukan kualitas arsitektur dari inisialisasi yang setara.
+Hanya ProxylessNAS-Mobile, FBNet-C, dan MnasNet-B1 (`torchvision.mnasnet1_0`). Backbone dibekukan lima epoch. Classifier memakai learning rate `1e-3`; setelah unfreeze, backbone memakai `1e-4`. Pelatihan berlangsung 200 epoch dengan aturan checkpoint/test yang sama. Hasil ini dilaporkan terpisah karena mengukur transfer learning, bukan kualitas arsitektur dari inisialisasi yang setara. MnasNet-A1 dan seluruh PalmNet tidak dimasukkan karena tidak tersedia bobot PyTorch resmi yang telah diaudit untuk arsitektur yang tepat.
 
 ## Agregasi statistik
 
