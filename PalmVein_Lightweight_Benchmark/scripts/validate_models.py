@@ -47,6 +47,8 @@ PALMNET_PAPER_DIAGNOSTICS = {
     "palmnet_20x_2413": (4.47, 765.12),
 }
 
+AMPVNET_REPORTED_PARAMETERS = 1_610_000
+
 
 def profile_mmacs(model, input_channels: int = 3) -> float | None:
     try:
@@ -142,6 +144,26 @@ def main():
             )
             if observed != target:
                 raise RuntimeError(f"{name} reference parameters {observed} do not match {target}")
+        elif name == "ampvnet":
+            reference = build_model(name, num_classes=1100, input_channels=3).eval()
+            observed = count_parameters(reference)
+            delta = abs(observed - AMPVNET_REPORTED_PARAMETERS) / AMPVNET_REPORTED_PARAMETERS
+            with torch.inference_mode():
+                reference_output = reference(torch.zeros(1, 3, 224, 224))
+            row.update(
+                reference_parameters=observed,
+                reference_delta_fraction=delta,
+                reference_valid=tuple(reference_output.shape) == (1, 1100) and delta < 0.02,
+                reference_mmacs_224=None if args.skip_flops else profile_mmacs(reference),
+                paper_reported_parameters_m=1.61,
+                paper_reported_flops_m=260.0,
+                provenance_status="paper-constrained independent reconstruction",
+            )
+            if not row["reference_valid"]:
+                raise RuntimeError(
+                    f"ampvnet reference validation failed: output={tuple(reference_output.shape)}, "
+                    f"parameters={observed}, delta={delta:.4f}"
+                )
         elif name in PALMNET_VARIANTS:
             validate_palmnet_architecture(name, model)
             width, code = PALMNET_VARIANTS[name]

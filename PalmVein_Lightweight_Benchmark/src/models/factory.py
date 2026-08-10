@@ -5,6 +5,7 @@ from pathlib import Path
 import torch.nn as nn
 
 from src.common import PROJECT_ROOT
+from .ampvnet import build_ampvnet
 from .ding import build_ding_baseline, build_ding_pruned, build_ding_pw
 from .fbnet import build_fbnet_c
 from .mnasnet import build_mnasnet_a1, build_mnasnet_b1_torchvision
@@ -14,7 +15,7 @@ from .proxylessnas import build_proxylessnas_mobile
 
 
 BASE_MODEL_NAMES = (
-    "proxylessnas_mobile", "fbnet_c", "mnasnet_a1", "mnasnet_b1_torchvision", "ding_baseline",
+    "proxylessnas_mobile", "fbnet_c", "mnasnet_a1", "mnasnet_b1_torchvision", "ampvnet", "ding_baseline",
     "ding_pw", "ding_pruned", "pdarts_l005_c12_cells10",
 )
 PALMNET_VARIANTS = {
@@ -27,6 +28,7 @@ PRIMARY_MODEL_NAMES = (
     "proxylessnas_mobile",
     "fbnet_c",
     "mnasnet_a1",
+    "ampvnet",
     "ding_baseline",
     "ding_pw",
     "ding_pruned",
@@ -50,6 +52,8 @@ def build_model(name: str, num_classes: int = 834, *, pretrained: bool = False, 
         return build_mnasnet_a1(num_classes, pretrained)
     if name == "mnasnet_b1_torchvision":
         return build_mnasnet_b1_torchvision(num_classes, pretrained)
+    if name == "ampvnet":
+        return build_ampvnet(num_classes, pretrained, input_channels)
     if name == "ding_baseline":
         return build_ding_baseline(num_classes, input_channels)
     if name == "ding_pw":

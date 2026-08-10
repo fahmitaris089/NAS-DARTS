@@ -34,6 +34,19 @@ Semua model scratch menerima tensor `[N, 3, 224, 224]` dan menghasilkan logits `
 
 Kecocokan parameter dan shape tensor mendukung kesetaraan struktur implementasi, tetapi tidak mengubah statusnya menjadi implementasi resmi dan tidak menjamin reproduksi akurasi ImageNet paper.
 
+## AMPVNet
+
+- sumber primer: D. Luo et al., “Palm Vein Recognition Under Unconstrained and Weak-Cooperative Conditions,” IEEE TIFS, 2024, Figure 9;
+- status: **paper-constrained independent reconstruction**; repositori resmi SCUT_PV_v1 menyediakan dataset dan split, tetapi tidak menyediakan implementasi AMPVNet yang dapat diaudit;
+- struktur eksplisit paper: input tiga kanal 224x224; stem Conv3x3 dan downsampling 4x; empat tahap berkanal `[64, 128, 256, 512]`; satu modified inverted-residual block tanpa shortcut per tahap; AvgPool stride 2; GAP dan dropout;
+- detail bottleneck eksplisit: Conv1x1-BN-ReLU6, depthwise Conv3x3-BN-ReLU6, Conv1x1, lalu average pooling;
+- inferensi rekonstruksi: rasio ekspansi empat dipilih karena Figure 9 tidak mencantumkan angka ekspansi dan konfigurasi tersebut menghasilkan 1.638M parameter pada classifier 1.100 kelas, berjarak sekitar 1,7% dari laporan paper 1,61M;
+- asumsi rekonstruksi: dropout ditetapkan 0,2 karena nilainya tidak dilaporkan; classifier linear digunakan untuk benchmark arsitektur terkontrol;
+- adaptasi benchmark: classifier diubah menjadi 834 kelas dan menghasilkan 1.501.218 parameter serta 195,96 MMAC menurut penghitung lokal;
+- loss utama paper adalah AdaFace dan evaluasinya berupa autentikasi subject-independent. Benchmark lokal menggunakan cross-entropy dan split klasifikasi tesis agar protokol training sama dengan model pembanding. Karena itu hasil lokal tidak boleh disebut reproduksi EER atau TAR paper.
+
+Paper melaporkan 1,61M parameter dan 0,26G FLOPs. Kecocokan parameter mendukung rekonstruksi, tetapi perbedaan definisi penghitung operasi dan detail implementasi yang tidak diterbitkan mencegah klaim reproduksi eksak.
+
 ## MnasNet-B1 (torchvision `mnasnet1_0`)
 
 - sumber API dan bobot: `pytorch/vision` tag `v0.21.0`, commit `7af698794eded568735f9519593603c1ec889eba`;

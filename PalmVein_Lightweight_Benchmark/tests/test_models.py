@@ -13,6 +13,7 @@ from src.models.ding import (
     DING_PW_SPECS,
     DingPointwiseBlock,
 )
+from src.models.ampvnet import AMPVNetBottleneck
 from src.models.mnasnet import MNASNET_A1_STAGES, SqueezeExcite
 from src.models.ding_legacy import build_ding_pruned_legacy
 from src.models.factory import PALMNET_VARIANTS, PRETRAINED_MODELS
@@ -27,6 +28,35 @@ from src.models.palmnet import (
 
 
 class ModelTests(unittest.TestCase):
+    def test_ampvnet_matches_figure_9_and_parameter_count(self):
+        reference = build_model("ampvnet", num_classes=1100).eval()
+        self.assertEqual(count_parameters(reference), 1_637_676)
+        self.assertLess(abs(count_parameters(reference) - 1_610_000) / 1_610_000, 0.02)
+        self.assertEqual(len(reference.stages), 4)
+        self.assertTrue(
+            all(isinstance(stage, AMPVNetBottleneck) for stage in reference.stages)
+        )
+
+        with torch.inference_mode():
+            outputs = reference.forward_stages(torch.zeros(1, 3, 224, 224))
+        self.assertEqual(
+            [tuple(value.shape[1:]) for value in outputs],
+            [
+                (32, 56, 56),
+                (64, 28, 28),
+                (128, 14, 14),
+                (256, 7, 7),
+                (512, 3, 3),
+            ],
+        )
+
+        adapted = build_model("ampvnet", num_classes=834)
+        output = adapted(torch.randn(2, 3, 224, 224))
+        self.assertEqual(tuple(output.shape), (2, 834))
+        output.square().mean().backward()
+        with self.assertRaises(ValueError):
+            build_model("ampvnet", pretrained=True)
+
     def test_all_adapted_outputs(self):
         sample = torch.randn(2, 3, 224, 224)
         for name in PRIMARY_MODEL_NAMES:

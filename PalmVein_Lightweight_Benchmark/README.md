@@ -7,6 +7,7 @@ Repositori eksperimen mandiri untuk membandingkan arsitektur ringan pada split p
 - `proxylessnas_mobile`
 - `fbnet_c`
 - `mnasnet_a1`
+- `ampvnet`
 - `mnasnet_b1_torchvision` (hasil transfer lama; bukan pembanding scratch utama)
 - `ding_baseline`
 - `ding_pw`

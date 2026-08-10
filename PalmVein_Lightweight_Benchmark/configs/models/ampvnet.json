@@ -1,0 +1,12 @@
+{
+  "name": "ampvnet",
+  "input_channels": 3,
+  "num_classes": 834,
+  "source": "Luo et al., IEEE TIFS 2024, Figure 9",
+  "reconstruction_status": "paper-constrained independent reconstruction",
+  "stem_channels": 32,
+  "stage_channels": [64, 128, 256, 512],
+  "blocks_per_stage": [1, 1, 1, 1],
+  "inferred_expansion_ratio": 4,
+  "dropout_assumption": 0.2
+}

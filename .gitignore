@@ -106,6 +106,9 @@ work/
 .mplconfig/
 **/.mplconfig/
 
+# Optional local FBNet pretrained dependency
+PalmVein_Lightweight_Benchmark/src/mobile-cv/
+
 # Local backups and thesis exports
 backup*/
 *backup*/
