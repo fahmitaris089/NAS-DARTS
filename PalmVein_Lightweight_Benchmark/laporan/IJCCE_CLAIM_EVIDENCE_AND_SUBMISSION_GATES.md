@@ -11,13 +11,14 @@ This companion file audits the working manuscript `IJCCE_Manuscript_Sections_1_3
 | Dataset provenance | 834 identities/8,340 images supplied by owner | Thesis and dataset setup notes | State without guessing why 266 identities are absent |
 | Preprocessing | Offline 384 ROI, CLAHE, min-max normalization, 224 resize | `Eksperimen_Hardware_Aware_PDARTS/src/preprocessing/preprocessing.py` | Use archived implementation, not benchmark reference helper |
 | NAS search | 12 operators; stages 5/8/11; 25 epochs each; 12/7/4 ops | `src/nas/nas_config.py`, `configs/search/thesis_lambdas.json` | Locked |
-| NAS latency objective | Max-normalized expected edge cost, averaged over normal/reduction cells | `src/nas/architect.py` | Locked |
+| LUT construction | Up to 60 operator-shape probes; ONNX/QDQ conversion; device timing; corrected and aggregated operator costs | `Eksperimen_Hardware_Aware_PDARTS/src/latency_lut/`, archived LUT artifacts | Figure 3; resource prior only, not full-model latency |
+| NAS latency objective | Max-normalized expected edge cost, averaged over normal/reduction cells | `src/nas/architect.py` | Figure 4; locked |
 | Controlled scratch | 600 epochs x seeds 42/123/2026, AdamW, no KD/pretraining | `configs/scratch_600e.json` | Locked |
 | Pretrained transfer | 200 epochs x three seeds for three official-weight models | `configs/pretrained_200e.json`, model provenance | Locked for current registry |
 | Test metrics | Accuracy/correct/errors; sample SD across seeds | `src/evaluation/metrics.py`, `scripts/summarize_results.py` | Locked |
 | Full-model PTQ | QDQ, QInt8 per-channel weights, QUInt8 activations, MinMax | `configs/deployment.json`, `scripts/quantize_int8.py` | Locked |
 | Target timing | Batch 1, 4/1 threads, 50 warm-up, 500 timed, mean/median/p95/min/max | `configs/deployment.json`, `scripts/benchmark_raspberry_pi.py` | Locked |
-| Equation provenance | Ten numbered equations encode the implemented DARTS, LUT, KD, accuracy, and seed-summary definitions | `IJCCE_Manuscript_Sections_1_3_Source.md`, `src/nas/architect.py`, training/evaluation code | Native editable OMML in v2; verify against code again after protocol freeze |
+| Equation provenance | Ten numbered equations encode the implemented DARTS, LUT, KD, accuracy, and seed-summary definitions | `IJCCE_Manuscript_Sections_1_3_Source.md`, `src/nas/architect.py`, training/evaluation code | Native editable OMML in v6; verify against code again after protocol freeze |
 | Literature support | 35 claim-linked sources, numbered by first appearance for the working draft | DOI/publisher/ISO/PMLR/OpenReview/CVF/official documentation records | Citation and reference sets match; convert to APA author-year before submission |
 
 ## Fatal submission gates
@@ -62,13 +63,14 @@ This companion file audits the working manuscript `IJCCE_Manuscript_Sections_1_3
 |---|---|---|
 | Fig. 1 | Fig. 3.1 | Add exact partition roles, nested NAS split, three protocol branches, training-only calibration, and legacy-test boundary |
 | Fig. 2 | Figs. 3.2-3.3 | Align labels with archived preprocessing code: 384 ROI and Lanczos resize |
-| Fig. 3 | Figs. 3.5 and 3.8 | Add five tensor shapes, raw/corrected LUT, normalization, and alpha-gradient path |
-| Fig. 4 | Fig. 3.10 | Add parity gate, manifest hash, FP32/INT8 accuracy branches, and timing statistics |
+| Fig. 3 | Fig. 3.5 | Limit the diagram to operator-shape probes, QDQ conversion, Raspberry Pi timing, raw/corrected costs, and aggregation into the LUT |
+| Fig. 4 | Fig. 3.8 | Show LUT normalization, classification and resource paths, the combined objective, and the gradient path to architecture parameters |
+| Fig. 5 | Fig. 3.10 | Add parity gate, manifest hash, FP32/INT8 accuracy branches, and timing statistics |
 
 ## Reference conversion gate
 
-The v2 manuscript uses 35 temporary numbered citations by author request. The numbering follows first appearance and the in-text citation set matches the reference set exactly. DOI-bearing records have unique DOI strings; sources without a DOI use an authoritative publisher, standards-body, proceedings, or official documentation URL with an access date where appropriate. Before submission, import and independently verify all records in Mendeley, switch to IJCCE/APA author-year style, and confirm the one-to-one citation/reference match again. Do not submit the numbered draft.
+The v6 manuscript uses 35 temporary numbered citations by author request. The numbering follows first appearance and the in-text citation set matches the reference set exactly. DOI-bearing records have unique DOI strings; sources without a DOI use an authoritative publisher, standards-body, proceedings, or official documentation URL with an access date where appropriate. Before submission, import and independently verify all records in Mendeley, switch to IJCCE/APA author-year style, and confirm the one-to-one citation/reference match again. Do not submit the numbered draft.
 
 ## Equation conversion gate
 
-The v2 builder accepts only `[[EQ:eq_id]]` and `[[MATH:math_id]]` source markers from locked registries. It raises `ValueError` for unknown display or inline identifiers and for a missing, duplicated, or reordered display equation. The generated DOCX must retain exactly ten `m:oMathPara` objects for Eqs. (1)-(10), editable inline `m:oMath` objects, and no unconverted markers or image-based equations. Any later mathematical change must be made in the source and OMML registry rather than typed over the rendered DOCX.
+The v6 builder accepts only `[[EQ:eq_id]]` and `[[MATH:math_id]]` source markers from locked registries. It raises `ValueError` for unknown display or inline identifiers and for a missing, duplicated, or reordered display equation. The generated DOCX must retain exactly ten `m:oMathPara` objects for Eqs. (1)-(10), editable inline `m:oMath` objects, and no unconverted markers or image-based equations. Any later mathematical change must be made in the source and OMML registry rather than typed over the rendered DOCX.

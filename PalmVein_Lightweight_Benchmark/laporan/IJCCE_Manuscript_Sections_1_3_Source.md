@@ -107,9 +107,7 @@ The historical exposure of the test split is recorded. The same manifest was use
 
 NAS is performed only on the SCUT_PV_v1 research subset. If PolyU is later added, the frozen P-DARTS genotype, a domain-specific comparator, and one strong lightweight baseline can be retrained there without repeating search. Such an experiment would test architecture transfer, not cross-dataset search consistency. It is outside the present Sections 1-3 protocol until its manifest is frozen.
 
-**Figure 1. Overview of the hardware-aware architecture search, controlled training, knowledge distillation, quantization, and target-device evaluation workflow.** Training data are divided internally for network-weight and architecture-parameter updates during search; the fixed validation set controls checkpoint and protocol selection; the legacy test set is evaluated only after each new run but is acknowledged as previously observed during thesis development.
-
-*Figure production note (not part of the manuscript).* Redraw thesis Fig. 3.1. The revision must show the 6,672/834/834 partition, the 3,336/3,336 internal search split, three separate training branches (scratch, pretrained, KD), training-only calibration, and distinct FP32/INT8 deployment paths. Do not reuse the current figure unchanged.
+**Figure 1.** Study workflow and data roles for hardware-aware architecture search, controlled training, knowledge distillation, quantization, and Raspberry Pi evaluation.
 
 ## 3.2. Dataset Provenance and Data Partitioning
 
@@ -146,25 +144,25 @@ The cropped ROI is enhanced with contrast-limited adaptive histogram equalizatio
 
 The data loader opens each stored image as one grayscale channel, converts it to a tensor, and replicates the channel three times. Replication preserves compatibility with audited ImageNet backbones without changing their stems. Every protocol uses ImageNet normalization with means `(0.485, 0.456, 0.406)` and standard deviations `(0.229, 0.224, 0.225)`. Scratch models receive the same normalization as pretrained models so that input scaling is not confounded with initialization.
 
-Training augmentation is deliberately mild: random rotation within 5 degrees, translation up to 3% in each direction, isotropic scale sampled from 0.97 to 1.08, brightness jitter of 0.08, and contrast jitter of 0.05. Horizontal flipping is disabled because left and right palms are distinct identities rather than interchangeable views. Validation, test, and calibration transforms consist only of resize, tensor conversion, channel replication, and normalization. The same transform builder is used for every controlled model.
+Training augmentation is deliberately mild: random rotation within 5 degrees, translation up to 3% in each direction, isotropic scale sampled from 0.97 to 1.08, brightness jitter of 0.08, and contrast jitter of 0.05. Horizontal flipping is disabled because left and right palms are distinct identities rather than interchangeable views. Validation, test, and calibration transforms consist only of resize, tensor conversion, channel replication, and normalization. The same transform builder is used for every controlled model. Figure 2 summarizes the offline ROI and preprocessing stages that precede these loader-level transforms.
 
-**Figure 2. ROI extraction and preprocessing pipeline for near-infrared palm-vein images.** The sequence is grayscale input, palm mask, largest-contour center, intensity-weighted center, 384 x 384 ROI, CLAHE, min-max normalization, and 224 x 224 output.
-
-*Figure production note (not part of the manuscript).* Combine thesis Figs. 3.2 and 3.3, but update the labels to match the archived implementation: Gaussian 7 x 7, Otsu mask, 15 x 15 morphological kernel, 384 x 384 crop, CLAHE 2.0/8 x 8, min-max normalization, and Lanczos resize. Use only author-created example images and remove any generic CNN diagram.
+**Figure 2.** Palm-vein image preparation: (a) region-of-interest extraction and (b) preprocessing to a 224 x 224 model input.
 
 ## 3.4. Target-Device Latency Characterization
 
-The search cost is derived from isolated operator probes. Each of the 12 candidate operators is instantiated at five representative tensor configurations: `(C=8, H=56, stride=1)`, `(C=16, H=28, stride=1)`, `(C=32, H=14, stride=1)`, `(C=16, H=28, stride=2)`, and `(C=32, H=14, stride=2)`. These configurations represent resolution-preserving and downsampling edges in normal and reduction cells. Re-parameterizable convolution branches are fused before export. The complete design yields 60 operator-shape probes before unsupported or non-computational cases are handled.
+Target-device profiling is performed before architecture search to obtain relative operator costs on the Raspberry Pi 5. The resulting latency lookup table (LUT) supplies a device-specific resource prior for the search objective; it is not an estimate of the end-to-end latency of a complete network.
+
+Each of the 12 candidate operators is instantiated at five representative tensor configurations: `(C=8, H=56, stride=1)`, `(C=16, H=28, stride=1)`, `(C=32, H=14, stride=1)`, `(C=16, H=28, stride=2)`, and `(C=32, H=14, stride=2)`. These configurations represent resolution-preserving and downsampling edges in normal and reduction cells. Re-parameterizable convolution branches are fused before export. The full design contains at most 60 operator-shape probes before unsupported or non-computational cases are handled.
 
 Probes are exported with ONNX opset 13 and converted to static QDQ INT8 graphs. The archived LUT quantizer uses per-channel signed INT8 weights and signed INT8 activations; probes without quantizable nodes, such as identity or pooling-only graphs, retain their FP32 representation. Random calibration tensors are acceptable for these isolated probes because the measurement concerns kernel execution rather than recognition accuracy. This probe calibration must not be confused with full-model PTQ, which uses real training images.
 
-Measurement uses ONNX Runtime `CPUExecutionProvider`, sequential execution, four intra-operation threads, and one inter-operation thread on a Raspberry Pi 5. Each probe is warmed up before timing. The corrected LUT artifact records 200 timed iterations per probe and aggregates the median latency for each shape, followed by the arithmetic mean across shapes for each operator. A measured 0.03299 ms QDQ-boundary floor was subtracted from affected isolated probes to reduce an artifact that would not necessarily recur inside a fused complete graph. Raw, corrected, and aggregation records must remain archived together so the correction is auditable.
+Measurement uses ONNX Runtime `CPUExecutionProvider`, sequential execution, four intra-operation threads, and one inter-operation thread on a Raspberry Pi 5. Each probe is warmed up before 200 timed iterations. The measurements are summarized by the median for each tensor configuration and the arithmetic mean across configurations for each operator. A measured 0.03299 ms QDQ-boundary floor is subtracted from affected isolated probes to reduce a boundary artifact that may not recur inside a fused full graph. The correction does not represent complete-model latency. Raw measurements, corrected values, and aggregation records are retained together for audit. Figure 3 summarizes the probe-to-LUT measurement path.
 
-The LUT is device- and runtime-specific. Raspberry Pi model, RAM, operating-system build, CPU governor, cooling condition, ONNX Runtime version, power state, and thread affinity must be captured in the final experiment ledger. The current archive establishes Raspberry Pi 5, CPU execution, four threads, and the iteration count, but not every environmental field. Missing fields are a submission gate rather than values to be inferred retrospectively.
+**Figure 3.** Construction of the Raspberry Pi latency lookup table from operator-shape benchmarks.
 
-**Figure 3. Construction and integration of the Raspberry Pi latency lookup table into progressive differentiable architecture search.** Candidate operator-shape probes are exported and quantized, measured under a fixed ONNX Runtime configuration, aggregated into a corrected device LUT, normalized, and included in the architecture loss.
+The LUT is device- and runtime-specific. Raspberry Pi model, RAM, operating-system build, CPU governor, cooling condition, ONNX Runtime version, power state, and thread affinity must be captured in the final experiment ledger. The current archive establishes Raspberry Pi 5, CPU execution, four threads, and the iteration count, but not every environmental field. Missing fields remain submission gates rather than values to be inferred retrospectively.
 
-*Figure production note (not part of the manuscript).* Merge the logic of thesis Figs. 3.5 and 3.8. Show all five tensor-shape families, the 12 operator families, QDQ probe conversion, raw versus corrected latency, per-shape median and per-operator mean, max-cost normalization, and the gradient path to architecture parameters. Clearly distinguish LUT guidance from final model benchmarking.
+The corrected operator costs in Figure 3 serve as relative resource priors rather than end-to-end latency estimates. Their normalization and integration into the architecture objective are described in Section 3.5.2, whereas deployment latency is measured from complete ONNX graphs.
 
 ## 3.5. Hardware-Aware P-DARTS
 
@@ -199,6 +197,12 @@ Architecture parameters are updated on the search-architecture batch using
 [[EQ:architecture_objective]]
 
 where [[MATH:l_ce]] is cross-entropy with label smoothing 0.1 and [[MATH:lambda]] controls device pressure. Separate searches use [[MATH:lambda_set]]. The normalization makes the coefficient less sensitive to the absolute unit of the cost source, but it does not turn [[MATH:lambda]] into a universal hyperparameter. Operator-cost distributions and search dynamics remain specific to this search space and LUT.
+
+Architecture optimization combines two information paths: classification evidence from the search-architecture batch and normalized device cost from the corrected latency lookup table. Figure 4 summarizes how these signals enter the architecture objective.
+
+**Figure 4.** Integration of the device-specific latency lookup table into the hardware-aware P-DARTS search objective.
+
+Gradients from the combined objective update the architecture parameters [[MATH:alpha]] while all active operators remain in the relaxed supernetwork. Discrete operators and the final genotype are selected only after the search has finished, as described in Section 3.5.4. As illustrated in Figure 4, the LUT guides operator selection during search but does not replace full-model benchmarking. Final FP32 and INT8 latency measurements are therefore obtained independently after ONNX export.
 
 ### 3.5.3. Progressive Search Schedule
 
@@ -279,11 +283,10 @@ Static PTQ uses ONNX Runtime's QDQ representation, per-channel QInt8 weights, QU
 
 Accuracy is evaluated independently for FP32 and INT8 ONNX graphs on all 834 test images. The output record includes correct, total, and accuracy, together with FP32 and INT8 file hashes and byte sizes. Operators left in FP32 by the quantizer must be enumerated from the final graph before the manuscript is submitted; the QDQ label alone does not imply that every operation executes as integer arithmetic.
 
-The full-model deployment recipe differs from the archived probe recipe in activation signedness: the corrected search LUT was created with signed INT8 probe activations, whereas the benchmark deployment config specifies QUInt8 activations. Until the LUT is regenerated with the same quantization recipe or an equivalence experiment is supplied, the manuscript describes the search as INT8-informed but does not claim that its LUT exactly matches the deployed quantizer. This alignment check is a required reproducibility item.
+The full-model deployment recipe differs from the archived probe recipe in activation signedness: the corrected search LUT was created with signed INT8 probe activations, whereas the benchmark deployment config specifies QUInt8 activations. Until the LUT is regenerated with the same quantization recipe or an equivalence experiment is supplied, the manuscript describes the search as INT8-informed but does not claim that its LUT exactly matches the deployed quantizer. This alignment check is a required reproducibility item. Figure 5 summarizes the separation between checkpoint export, training-only calibration, accuracy evaluation, and target-device timing.
 
-**Figure 4. ONNX export, post-training INT8 quantization, and Raspberry Pi benchmarking pipeline.** A frozen PyTorch checkpoint is exported and parity-checked, the training-only calibration manifest determines INT8 ranges, FP32 and INT8 graphs are evaluated for identification accuracy, and both graphs are timed under an identical target-device runtime.
+**Figure 5.** ONNX model export, static INT8 post-training quantization, accuracy validation, and Raspberry Pi latency benchmarking.
 
-*Figure production note (not part of the manuscript).* Update thesis Fig. 3.10. Add the minimum-validation-loss checkpoint, ONNX checker and parity gate, 834-image training-only calibration branch, FP32 versus INT8 test paths, file hashing, and Raspberry Pi latency statistics. Show the LUT-probe recipe as a separate upstream object so it is not confused with full-model calibration.
 
 ## 3.9. Evaluation and Statistical Reporting
 
@@ -316,6 +319,26 @@ The final analysis compares FP32 with INT8 using accuracy change in percentage p
 | Accuracy | FP32 and INT8 evaluated on 834-image legacy test | Correct, errors, total, and accuracy per seed |
 
 The reproducibility package retains configuration JSON files, split and calibration manifests, genotype files, model-provenance notes, checkpoint and ONNX hashes, seed-level metrics, and Raspberry Pi runtime records. The manuscript will be updated from these machine-readable artifacts after all prespecified runs finish; no result is entered from a console screenshot or reconstructed from a rounded thesis table.
+
+# Internal Figure Production Checklist - Remove Before Submission
+
+Temporary artwork status: the six source images from thesis Figures 3.1, 3.2, 3.3, 3.5, 3.8, and 3.10 are embedded for layout development only. They must be redrawn or updated in English before journal submission.
+
+## Required for Sections 1-3
+
+Figure 1 - redraw thesis Figure 3.1 with the 6,672/834/834 split, the 3,336/3,336 internal NAS split, separate scratch/pretrained/KD branches, training-only calibration, and distinct FP32/INT8 deployment paths.
+
+Figure 2 - merge and update thesis Figures 3.2 and 3.3. Match the archived preprocessing implementation: Gaussian 7 x 7, Otsu mask, 15 x 15 morphology, 384 x 384 crop, CLAHE 2.0/8 x 8, min-max normalization, and Lanczos resize to 224 x 224.
+
+Figure 3 - redraw thesis Figure 3.5 as the operator-shape probe and latency-LUT construction pipeline. Add the five tensor configurations, 12 operator families, QDQ conversion, raw and corrected latency, median per configuration, and mean per operator. Do not include architecture-parameter optimization in this figure.
+
+Figure 4 - redraw thesis Figure 3.8 as the LUT-to-search integration diagram. Add max-cost normalization, classification and resource-information paths, the architecture objective, and the gradient path to the architecture parameters. Keep full-model deployment benchmarking outside this figure.
+
+Figure 5 - update thesis Figure 3.10 with minimum-validation-loss checkpoint selection, ONNX checker and parity gates, the 834-image training-only calibration manifest, FP32 and INT8 accuracy paths, file hashes, and Raspberry Pi mean, median, and p95 latency reporting.
+
+## Artwork Requirements
+
+Export every final figure as a separate file, retain editable captions in the manuscript, use consistent English lettering, and preserve raw images and transformation history. Target at least 1000 dpi for line drawings or 500 dpi for mixed image-line artwork. Do not transfer generic background diagrams or unreconciled Chapter 4 result charts into the condensed article.
 
 # References (temporary numbered drafting style)
 

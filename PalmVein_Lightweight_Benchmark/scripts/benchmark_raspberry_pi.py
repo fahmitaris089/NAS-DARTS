@@ -50,8 +50,9 @@ def main():
         session.run(None, feed)
         latencies.append((time.perf_counter_ns() - started) / 1_000_000)
     machine = platform.machine()
+    onnx_hash = sha256_file(args.onnx)
     payload = {
-        "onnx": str(args.onnx.resolve()), "onnx_sha256": sha256_file(args.onnx),
+        "onnx": str(args.onnx.resolve()), "onnx_sha256": onnx_hash,
         "platform": platform.platform(), "machine": machine,
         "raspberry_pi_5_claimable": machine in {"aarch64", "arm64"} and "Linux" in platform.system(),
         "threads": threads, "batch_size": shape[0], "warmup_iterations": warmup,
@@ -60,14 +61,33 @@ def main():
         "minimum_ms": min(latencies), "maximum_ms": max(latencies),
     }
     resolved = str(args.onnx.resolve())
-    for metadata_path in (PROJECT_ROOT / "results/deployment").glob("*.json"):
+    metadata_paths = [
+        *(PROJECT_ROOT / "results/deployment").glob("*_onnx_fp32.json"),
+        *(PROJECT_ROOT / "results/deployment").glob("*_quantization.json"),
+    ]
+    for metadata_path in metadata_paths:
         try:
             candidate = load_json(metadata_path)
         except (OSError, json.JSONDecodeError):
             continue
-        if candidate.get("onnx_path") == resolved or candidate.get("int8_onnx") == resolved:
+        candidate_hash = candidate.get("onnx_sha256") or candidate.get("int8_sha256")
+        if (
+            candidate.get("onnx_path") == resolved
+            or candidate.get("int8_onnx") == resolved
+            or candidate_hash == onnx_hash
+        ):
             payload.update({key: candidate[key] for key in ("model", "protocol", "seed") if key in candidate})
+            payload["precision"] = "INT8" if candidate.get("int8_onnx") else "FP32"
+            if (candidate.get("test") or {}).get("accuracy") is not None:
+                payload["accuracy"] = candidate["test"]["accuracy"]
             break
+    if payload.get("model") and payload.get("protocol") and payload.get("seed") is not None:
+        test_path = (
+            PROJECT_ROOT / "results" / str(payload["protocol"]) / str(payload["model"])
+            / f"seed_{payload['seed']}" / "test_results.json"
+        )
+        if "accuracy" not in payload and test_path.exists():
+            payload["accuracy"] = (load_json(test_path).get("test") or {}).get("accuracy")
     output = args.output or PROJECT_ROOT / "results/deployment" / f"{args.onnx.stem}_latency.json"
     save_json(payload, output)
     print(json.dumps(payload, indent=2))

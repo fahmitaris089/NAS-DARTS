@@ -74,6 +74,8 @@ def int8_summary():
     rows = []
     for path in (PROJECT_ROOT / "results/deployment").glob("*_quantization.json"):
         payload = load_json(path)
+        if not all(payload.get(key) is not None for key in ("model", "protocol", "seed")):
+            continue
         test = payload.get("test") or {}
         rows.append({
             "model": payload.get("model", "unknown"), "protocol": payload.get("protocol", "unknown"),
@@ -86,14 +88,44 @@ def int8_summary():
 
 
 def latency_summary():
+    metadata_by_hash = {}
+    for path in (PROJECT_ROOT / "results/deployment").glob("*_onnx_fp32.json"):
+        payload = load_json(path)
+        if payload.get("onnx_sha256"):
+            metadata_by_hash[payload["onnx_sha256"]] = {**payload, "precision": "FP32"}
+    for path in (PROJECT_ROOT / "results/deployment").glob("*_quantization.json"):
+        payload = load_json(path)
+        if payload.get("int8_sha256"):
+            metadata_by_hash[payload["int8_sha256"]] = {**payload, "precision": "INT8"}
     rows = []
     for path in (PROJECT_ROOT / "results/deployment").glob("*_latency.json"):
         payload = load_json(path)
-        rows.append({key: payload.get(key, "") for key in [
-            "model", "protocol", "seed", "machine", "platform", "raspberry_pi_5_claimable",
+        metadata = metadata_by_hash.get(payload.get("onnx_sha256"), {})
+        model = payload.get("model") or metadata.get("model", "")
+        protocol = payload.get("protocol") or metadata.get("protocol", "")
+        seed = payload.get("seed") if payload.get("seed") is not None else metadata.get("seed", "")
+        accuracy = payload.get("accuracy")
+        if accuracy is None:
+            accuracy = (metadata.get("test") or {}).get("accuracy")
+        if accuracy is None and model and protocol and seed != "":
+            test_path = PROJECT_ROOT / "results" / str(protocol) / str(model) / f"seed_{seed}" / "test_results.json"
+            if test_path.exists():
+                accuracy = (load_json(test_path).get("test") or {}).get("accuracy", "")
+        enriched = {
+            **payload,
+            "model": model,
+            "protocol": protocol,
+            "seed": seed,
+            "precision": payload.get("precision") or metadata.get("precision", ""),
+            "accuracy": "" if accuracy is None else accuracy,
+        }
+        rows.append({key: enriched.get(key, "") for key in [
+            "model", "protocol", "seed", "precision", "accuracy", "machine", "platform", "raspberry_pi_5_claimable",
             "threads", "batch_size", "warmup_iterations", "benchmark_iterations", "mean_ms", "median_ms", "p95_ms",
         ]})
-    return sorted(rows, key=lambda row: (str(row["protocol"]), str(row["model"]), str(row["seed"])))
+    return sorted(rows, key=lambda row: (
+        str(row["protocol"]), str(row["model"]), str(row["seed"]), str(row["precision"])
+    ))
 
 
 def main():
@@ -108,7 +140,8 @@ def main():
         "model", "protocol", "seed", "accuracy", "int8_bytes", "format", "weights", "activations", "calibration_count",
     ])
     write_csv(summary / "raspberry_pi_latency.csv", latency_summary(), [
-        "model", "protocol", "seed", "machine", "platform", "raspberry_pi_5_claimable", "threads", "batch_size",
+        "model", "protocol", "seed", "precision", "accuracy", "machine", "platform",
+        "raspberry_pi_5_claimable", "threads", "batch_size",
         "warmup_iterations", "benchmark_iterations", "mean_ms", "median_ms", "p95_ms",
     ])
     print(json.dumps({"summary_directory": str(summary), "files": sorted(path.name for path in summary.glob("*.csv"))}, indent=2))

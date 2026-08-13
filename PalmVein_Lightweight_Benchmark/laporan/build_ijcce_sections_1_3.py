@@ -19,7 +19,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE / "IJCCE_Manuscript_Sections_1_3_Source.md"
-OUTPUT = HERE / "IJCCE_Manuscript_Sections_1_3_Working_Draft_v2.docx"
+OUTPUT = HERE / "IJCCE_Manuscript_Sections_1_3_Working_Draft_v6_Base.docx"
 
 
 MATH_MARKER_RE = re.compile(r"\[\[MATH:([a-z0-9_]+)\]\]")
@@ -360,7 +360,6 @@ SKIP_PREFIXES = (
     "Two evidence layers are maintained",
     "The manifest assigns eight images",
     "Static INT8 calibration uses",
-    "Probes are exported with",
     "The edge output is",
     "Network weights are optimized",
     "The KD protocol is",
@@ -683,7 +682,9 @@ def build():
                 set_run_font(run, 17.5, bold=True)
             else:
                 paragraph = doc.add_paragraph(heading, style="Heading 1")
-                paragraph.paragraph_format.page_break_before = heading.startswith("References")
+                paragraph.paragraph_format.page_break_before = heading.startswith(
+                    ("Internal Figure Production Checklist", "References")
+                )
         elif block.startswith("## "):
             doc.add_paragraph(block[3:].strip(), style="Heading 2")
         elif block.startswith("### "):
@@ -715,20 +716,16 @@ def build():
             add_inline_markdown(paragraph, block, size=8.5, color="555555")
         elif block.startswith("**Figure "):
             paragraph = doc.add_paragraph()
-            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            paragraph.paragraph_format.space_before = Pt(8)
-            paragraph.paragraph_format.space_after = Pt(3)
-            paragraph.paragraph_format.keep_with_next = True
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            paragraph.paragraph_format.space_before = Pt(2)
+            paragraph.paragraph_format.space_after = Pt(7)
+            paragraph.paragraph_format.keep_with_next = False
             paragraph.paragraph_format.line_spacing = 1.0
-            add_inline_markdown(paragraph, block, size=9.5)
+            add_inline_markdown(paragraph, block, size=9)
         elif block.startswith("*Figure production note"):
-            paragraph = doc.add_paragraph()
-            paragraph.paragraph_format.left_indent = Inches(0.2)
-            paragraph.paragraph_format.right_indent = Inches(0.2)
-            paragraph.paragraph_format.space_before = Pt(0)
-            paragraph.paragraph_format.space_after = Pt(8)
-            paragraph.paragraph_format.line_spacing = 1.0
-            add_inline_markdown(paragraph, block, size=8.5, color="555555")
+            # Production instructions belong in the removable internal checklist,
+            # never in the manuscript body beside a figure caption.
+            continue
         elif DISPLAY_MARKER_RE.fullmatch(block.strip()):
             equation_index += 1
             add_display_equation(doc, DISPLAY_MARKER_RE.fullmatch(block.strip()).group(1), equation_index)

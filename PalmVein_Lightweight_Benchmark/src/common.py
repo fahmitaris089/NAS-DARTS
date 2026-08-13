@@ -5,10 +5,12 @@ import json
 import os
 import random
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import torch
+
+if TYPE_CHECKING:
+    import torch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +44,8 @@ def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
 
 
 def set_seed(seed: int, deterministic: bool = True) -> None:
+    import torch
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -58,6 +62,8 @@ def set_seed(seed: int, deterministic: bool = True) -> None:
 
 
 def select_device(requested: str = "auto") -> torch.device:
+    import torch
+
     if requested != "auto":
         return torch.device(requested)
     if torch.cuda.is_available():
