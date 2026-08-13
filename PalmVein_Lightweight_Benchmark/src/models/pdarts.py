@@ -5,6 +5,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class Identity(nn.Module):
@@ -59,12 +60,61 @@ class RepConvBN(nn.Module):
         self.bn_1 = nn.BatchNorm2d(channels)
         self.bn_identity = nn.BatchNorm2d(channels) if stride == 1 else None
         self.relu = nn.ReLU(inplace=True)
+        self.channels = channels
+        self.stride = stride
+        self.deploy = False
+        self.fused_conv = None
 
     def forward(self, x):
+        if self.deploy and self.fused_conv is not None:
+            return self.relu(self.fused_conv(x))
         value = self.bn_k(self.conv_k(x)) + self.bn_1(self.conv_1(x))
         if self.bn_identity is not None:
             value = value + self.bn_identity(x)
         return self.relu(value)
+
+    @staticmethod
+    def _fuse_branch(weight, bn):
+        std = torch.sqrt(bn.running_var + bn.eps)
+        scale = (bn.weight / std).reshape(-1, 1, 1, 1)
+        return weight * scale, bn.bias - bn.running_mean * bn.weight / std
+
+    @torch.no_grad()
+    def switch_to_deploy(self):
+        if self.deploy:
+            return
+        weight, bias = self._fuse_branch(self.conv_k.weight, self.bn_k)
+        weight_1, bias_1 = self._fuse_branch(self.conv_1.weight, self.bn_1)
+        weight = weight + F.pad(weight_1, [1, 1, 1, 1])
+        bias = bias + bias_1
+        if self.bn_identity is not None:
+            identity = torch.zeros(
+                self.channels, self.channels, 1, 1,
+                device=weight.device, dtype=weight.dtype,
+            )
+            indices = torch.arange(self.channels, device=weight.device)
+            identity[indices, indices, 0, 0] = 1.0
+            weight_id, bias_id = self._fuse_branch(identity, self.bn_identity)
+            weight = weight + F.pad(weight_id, [1, 1, 1, 1])
+            bias = bias + bias_id
+        self.fused_conv = nn.Conv2d(
+            self.channels, self.channels, 3, self.stride, 1, bias=True
+        ).to(device=weight.device, dtype=weight.dtype)
+        self.fused_conv.weight.copy_(weight)
+        self.fused_conv.bias.copy_(bias)
+        for name in ("conv_k", "bn_k", "conv_1", "bn_1", "bn_identity"):
+            if hasattr(self, name):
+                delattr(self, name)
+        self.deploy = True
+
+
+def fuse_reparam_model(model: nn.Module) -> int:
+    count = 0
+    for module in model.modules():
+        if isinstance(module, RepConvBN) and not module.deploy:
+            module.switch_to_deploy()
+            count += 1
+    return count
 
 
 def make_op(name: str, channels: int, stride: int):

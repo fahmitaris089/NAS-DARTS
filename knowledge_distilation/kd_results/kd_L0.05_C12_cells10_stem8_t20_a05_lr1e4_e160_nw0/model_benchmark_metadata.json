@@ -1,0 +1,58 @@
+{
+  "exported_at": "2026-08-14T01:50:13.663303",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.05_C12_cells10_stem8_t20_a05_lr1e4_e160_nw0",
+  "model_path": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.05_C12_cells10_stem8_t20_a05_lr1e4_e160_nw0/best_model.pth",
+  "onnx_path": "/Users/fahmitaris/Downloads/NAS-DARTS/knowledge_distilation/kd_results/kd_L0.05_C12_cells10_stem8_t20_a05_lr1e4_e160_nw0/model_benchmark_fused.onnx",
+  "input_size": 224,
+  "opset": 13,
+  "num_classes": 834,
+  "c_init": 12,
+  "num_cells": 10,
+  "stem_downsample": 8,
+  "reduction_indices": [
+    3,
+    7
+  ],
+  "auxiliary": false,
+  "model_size_mb": 2.4402,
+  "onnx_sha256": "2b9a811fade7ca8c7c422e9be7e2facc4fc4262a2ba9f5b0d5f3aa2a244737ce",
+  "backend": "onnxruntime",
+  "deployment_graph": "RepConvBN branches fused to single Conv2d",
+  "fusion_validation": {
+    "repconv_blocks_fused": 36,
+    "max_abs_error": 2.86102294921875e-06,
+    "mean_abs_error": 5.214242833062599e-07,
+    "atol": 0.0001,
+    "passed": true,
+    "parameters_training_graph": 637842,
+    "parameters_deploy_graph": 595614
+  },
+  "onnx_validation": {
+    "max_abs_error": 3.337860107421875e-06,
+    "mean_abs_error": 6.54874725114496e-07,
+    "atol": 0.0001,
+    "passed": true,
+    "node_counts": {
+      "Add": 40,
+      "BatchNormalization": 4,
+      "Concat": 15,
+      "Constant": 35,
+      "Conv": 115,
+      "Gather": 1,
+      "Gemm": 1,
+      "GlobalAveragePool": 1,
+      "MaxPool": 2,
+      "Relu": 64,
+      "Reshape": 1,
+      "Shape": 1,
+      "Slice": 8,
+      "Unsqueeze": 1
+    }
+  },
+  "kd_config": {
+    "teacher_arch": "efficientnet_v2_m",
+    "temperature": 20.0,
+    "alpha": 0.5,
+    "epochs": 160
+  }
+}

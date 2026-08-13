@@ -26,6 +26,14 @@ def parse_args():
     parser.add_argument("--protocol", choices=("scratch", "pretrained"), default="scratch")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--training-config", type=Path,
+        help="Optional training configuration JSON. Its protocol must match --protocol.",
+    )
+    parser.add_argument(
+        "--experiment-name",
+        help="Separate output namespace; defaults to experiment_name in the training config.",
+    )
     parser.add_argument("--epochs", type=int)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--num-workers", type=int)
@@ -37,8 +45,15 @@ def main():
     args = parse_args()
     if args.protocol == "pretrained" and args.model not in PRETRAINED_MODELS:
         raise SystemExit(f"ERROR: {args.model} has no official pretrained weights; result is N/A by protocol.")
-    protocol_path = "configs/scratch_600e.json" if args.protocol == "scratch" else "configs/pretrained_200e.json"
+    protocol_path = args.training_config or Path(
+        "configs/scratch_600e.json" if args.protocol == "scratch" else "configs/pretrained_200e.json"
+    )
     protocol = load_json(protocol_path)
+    if protocol.get("protocol") != args.protocol:
+        raise SystemExit(
+            f"ERROR: training config protocol={protocol.get('protocol')!r} "
+            f"does not match --protocol {args.protocol!r}."
+        )
     if args.epochs is not None:
         protocol["epochs"] = args.epochs
     if args.batch_size is not None:
@@ -52,12 +67,15 @@ def main():
     model = build_model(args.model, num_classes=int(dataset_config["expected_classes"]), pretrained=args.protocol == "pretrained")
     loaders, label_map = build_dataloaders(dataset_config, protocol, args.seed)
     run_name = f"{args.model}/seed_{args.seed}"
-    result_dir = PROJECT_ROOT / "results" / args.protocol / run_name
-    checkpoint_dir = PROJECT_ROOT / "artifacts/checkpoints" / args.protocol / run_name
+    experiment_name = args.experiment_name or protocol.get("experiment_name") or args.protocol
+    result_dir = PROJECT_ROOT / "results" / experiment_name / run_name
+    checkpoint_dir = PROJECT_ROOT / "artifacts/checkpoints" / experiment_name / run_name
     result_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
         "model": args.model,
         "protocol": args.protocol,
+        "experiment_name": experiment_name,
+        "training_config": str(protocol_path),
         "seed": args.seed,
         "num_classes": len(label_map),
         "parameters": count_parameters(model),
