@@ -233,6 +233,13 @@ class EvalNetwork(nn.Module):
         logits = self.classifier(self.dropout(embeddings))
         return logits, embeddings
 
+    def forward_adaface(self, x, labels=None):
+        embeddings = self.forward_features(x)
+        dropped = self.dropout(embeddings)
+        inference_logits = self.classifier(dropped)
+        margin_logits = self.classifier(dropped, labels) if labels is not None else inference_logits
+        return inference_logits, margin_logits, embeddings
+
     def forward(self, x):
         s0 = s1 = self.stem(x)
         logits_aux = None

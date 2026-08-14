@@ -62,6 +62,7 @@ from genotypes import dict_to_genotype
 from kd_config import KD_CFG, KDConfig, print_config
 from kd_loss import (
     HintonKDLoss,
+    DecoupledKDLoss,
     HybridBiometricKDLoss,
     HardTopKMarginKDLoss,
     ConservativeAnchorKDLoss,
@@ -69,6 +70,7 @@ from kd_loss import (
     TopKDLoss,
 )
 from model_eval import EvalNetwork
+from adaface import replace_linear_with_adaface
 from palm_vein_dataset import create_retrain_dataloaders
 
 
@@ -138,11 +140,25 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                         help="CE weight α. KD weight = 1-α (default: 0.3)")
     parser.add_argument("--kd_method", default=cfg.kd_method,
                         choices=[
-                            "hinton", "pairwise", "embedding", "hybrid",
+                            "hinton", "dkd", "pairwise", "embedding", "hybrid",
                             "hard_topk", "conservative", "conservative_multiteacher",
                             "topkd",
                         ],
                         help="KD loss method. 'hinton' preserves the original logit KD path.")
+    parser.add_argument("--dkd_alpha", type=float, default=cfg.dkd_alpha,
+                        help="Target-class DKD weight")
+    parser.add_argument("--dkd_beta", type=float, default=cfg.dkd_beta,
+                        help="Non-target-class DKD weight")
+    parser.add_argument("--dkd_warmup_epochs", type=int, default=cfg.dkd_warmup_epochs,
+                        help="Linear DKD loss warm-up in epochs")
+    parser.add_argument("--adaface", action="store_true", default=cfg.adaface,
+                        help="Use AdaFace classification head from student config/checkpoint")
+    parser.add_argument("--adaface_m", type=float, default=cfg.adaface_m)
+    parser.add_argument("--adaface_h", type=float, default=cfg.adaface_h)
+    parser.add_argument("--adaface_s", type=float, default=cfg.adaface_s)
+    parser.add_argument("--adaface_t_alpha", type=float, default=cfg.adaface_t_alpha)
+    parser.add_argument("--skip-test-evaluation", action="store_true",
+                        help="Do not inspect the test split during screening")
     parser.add_argument("--ce_weight", type=float, default=cfg.ce_weight,
                         help="CE weight for pairwise/embedding/hybrid KD")
     parser.add_argument("--relation_weight", type=float, default=cfg.relation_weight,
@@ -278,6 +294,15 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.temperature         = args.temperature
     cfg.alpha               = args.alpha
     cfg.kd_method           = args.kd_method
+    cfg.dkd_alpha           = args.dkd_alpha
+    cfg.dkd_beta            = args.dkd_beta
+    cfg.dkd_warmup_epochs   = args.dkd_warmup_epochs
+    cfg.adaface             = args.adaface
+    cfg.adaface_m           = args.adaface_m
+    cfg.adaface_h           = args.adaface_h
+    cfg.adaface_s           = args.adaface_s
+    cfg.adaface_t_alpha     = args.adaface_t_alpha
+    cfg.skip_test_evaluation = args.skip_test_evaluation
     cfg.ce_weight           = args.ce_weight
     cfg.relation_weight     = args.relation_weight
     cfg.embedding_weight    = args.embedding_weight
@@ -912,6 +937,7 @@ def train_one_epoch(
     total_anchor = 0.0
     total_teacher1_kd = total_teacher2_kd = total_teacher2_active = 0.0
     total_tdl = total_contrast = total_topkd = 0.0
+    total_tckd = total_nckd = 0.0
     correct = n_samples = 0
 
     for batch_idx, (images, targets) in enumerate(loader):
@@ -927,7 +953,7 @@ def train_one_epoch(
         with torch.no_grad():
             logits_anchor = None
             logits_teacher2 = None
-            if cfg.kd_method in {"hinton", "hard_topk", "conservative", "conservative_multiteacher", "topkd"}:
+            if cfg.kd_method in {"hinton", "dkd", "hard_topk", "conservative", "conservative_multiteacher", "topkd"}:
                 logits_teacher = teacher(mixed_images)
                 if cfg.kd_method in {"conservative", "conservative_multiteacher"}:
                     if anchor is None:
@@ -956,6 +982,16 @@ def train_one_epoch(
                                                 targets_a, mix_targets=mix_targets)
                 else:
                     loss, breakdown = criterion(logits_student, logits_teacher, targets)
+            elif cfg.kd_method == "dkd":
+                if cfg.adaface:
+                    logits_student, classification_logits, _ = student.forward_adaface(mixed_images, targets)
+                else:
+                    logits_student = student(mixed_images)
+                    classification_logits = None
+                loss, breakdown = criterion(
+                    logits_student, logits_teacher, targets,
+                    epoch=epoch, classification_logits=classification_logits,
+                )
             elif cfg.kd_method == "hard_topk":
                 logits_student = student(mixed_images)
                 loss, breakdown = criterion(
@@ -1034,6 +1070,8 @@ def train_one_epoch(
         total_tdl += breakdown.get("loss_tdl", 0.0)
         total_contrast += breakdown.get("loss_contrast", 0.0)
         total_topkd += breakdown.get("loss_topkd", 0.0)
+        total_tckd += breakdown.get("loss_tckd", 0.0)
+        total_nckd += breakdown.get("loss_nckd", 0.0)
 
         if (batch_idx + 1) % cfg.log_interval == 0:
             current_lr = optimizer.param_groups[0]["lr"]
@@ -1042,6 +1080,8 @@ def train_one_epoch(
                 f"loss={breakdown['loss_total']:.4f} "
                 f"ce={breakdown['loss_ce']:.4f} "
                 f"kd={breakdown.get('loss_kd', 0.0):.4f} "
+                f"tckd={breakdown.get('loss_tckd', 0.0):.4f} "
+                f"nckd={breakdown.get('loss_nckd', 0.0):.4f} "
                 f"rel={breakdown.get('loss_relation', 0.0):.4f} "
                 f"emb={breakdown.get('loss_embedding', 0.0):.4f} "
                 f"topk={breakdown.get('loss_topk', 0.0):.4f} "
@@ -1075,6 +1115,8 @@ def train_one_epoch(
     train_tdl = total_tdl / n_batches
     train_contrast = total_contrast / n_batches
     train_topkd = total_topkd / n_batches
+    train_tckd = total_tckd / n_batches
+    train_nckd = total_nckd / n_batches
     train_acc  = correct    / n_samples
 
     return (
@@ -1084,7 +1126,20 @@ def train_one_epoch(
         train_teacher1_kd, train_teacher2_kd, train_teacher2_active,
         train_hard_ratio, train_true_rank,
         train_tdl, train_contrast, train_topkd,
+        train_tckd, train_nckd,
     )
+
+    use_adaface = bool(cfg.adaface or retrain_cfg.get("loss_mode") == "adaface")
+    if use_adaface:
+        replace_linear_with_adaface(
+            student, num_classes=cfg.num_classes,
+            m=float(retrain_cfg.get("adaface_m", cfg.adaface_m)),
+            h=float(retrain_cfg.get("adaface_h", cfg.adaface_h)),
+            s=float(retrain_cfg.get("adaface_s", cfg.adaface_s)),
+            t_alpha=float(retrain_cfg.get("adaface_t_alpha", cfg.adaface_t_alpha)),
+        )
+        cfg.adaface = True
+        logger.info("  Student head: AdaFace (margin for CE, cosine logits for DKD/inference)")
 
 
 # ─── Evaluation ──────────────────────────────────────────────────────────────
@@ -1099,6 +1154,7 @@ def evaluate(student, loader, device, compute_auc: bool = False):
     criterion = nn.CrossEntropyLoss()
 
     total_loss = correct = n_samples = 0
+    total_true_margin = 0.0
     all_probs  = [] if compute_auc else None
     all_labels = [] if compute_auc else None
 
@@ -1113,6 +1169,10 @@ def evaluate(student, loader, device, compute_auc: bool = False):
         correct += (pred == targets).sum().item()
         total_loss += loss.item()
         n_samples  += targets.size(0)
+        true_logits = logits.gather(1, targets.unsqueeze(1)).squeeze(1)
+        masked = logits.clone()
+        masked.scatter_(1, targets.unsqueeze(1), float("-inf"))
+        total_true_margin += (true_logits - masked.max(dim=1).values).sum().item()
 
         if compute_auc:
             probs = torch.softmax(logits, dim=1).cpu().numpy()
@@ -1122,6 +1182,7 @@ def evaluate(student, loader, device, compute_auc: bool = False):
     results = {
         "acc" : correct / n_samples,
         "loss": total_loss / len(loader),
+        "true_class_margin": total_true_margin / n_samples,
     }
 
     if compute_auc and all_probs:
@@ -1330,15 +1391,18 @@ def main():
     # ── Initial evaluation before any KD update ──
     logger.info("  Evaluasi initial student sebelum KD...")
     initial_val_results = evaluate(student, val_loader, device)
-    initial_test_results = evaluate(student, test_loader, device)
+    initial_test_results = None if cfg.skip_test_evaluation else evaluate(student, test_loader, device)
     logger.info(
         f"  Initial VAL  : acc={initial_val_results['acc']*100:.2f}% "
         f"loss={initial_val_results['loss']:.4f}"
     )
-    logger.info(
-        f"  Initial TEST : acc={initial_test_results['acc']*100:.2f}% "
-        f"loss={initial_test_results['loss']:.4f}"
-    )
+    if initial_test_results is not None:
+        logger.info(
+            f"  Initial TEST : acc={initial_test_results['acc']*100:.2f}% "
+            f"loss={initial_test_results['loss']:.4f}"
+        )
+    else:
+        logger.info("  Initial TEST : skipped by screening protocol")
 
     # ── Loss ──
     if cfg.kd_method == "hinton":
@@ -1350,6 +1414,19 @@ def main():
         logger.info(
             f"  Loss: HintonKD  T={cfg.temperature}  "
             f"alpha={cfg.alpha} (CE={cfg.alpha*100:.0f}%, KD={(1-cfg.alpha)*100:.0f}%)"
+        )
+    elif cfg.kd_method == "dkd":
+        criterion = DecoupledKDLoss(
+            temperature=cfg.temperature,
+            alpha=cfg.dkd_alpha,
+            beta=cfg.dkd_beta,
+            warmup_epochs=cfg.dkd_warmup_epochs,
+            label_smoothing=cfg.label_smoothing,
+        ).to(device)
+        logger.info(
+            f"  Loss: DKD T={cfg.temperature} TCKD={cfg.dkd_alpha} "
+            f"NCKD={cfg.dkd_beta} warmup={cfg.dkd_warmup_epochs} "
+            f"classification={'AdaFace' if cfg.adaface else 'CE'}"
         )
     elif cfg.kd_method == "hard_topk":
         criterion = HardTopKMarginKDLoss(
@@ -1465,6 +1542,7 @@ def main():
 
     # ── Training loop ──
     best_val_acc  = 0.0
+    best_val_loss = float("inf")
     best_epoch    = 0
     history       = []
 
@@ -1475,9 +1553,10 @@ def main():
             "train_relation", "train_embedding", "train_logit_kd",
             "train_topk", "train_margin", "train_anchor",
             "train_teacher1_kd", "train_teacher2_kd", "teacher2_active",
-            "train_tdl", "train_contrast", "train_topkd",
+            "train_tdl", "train_contrast", "train_topkd", "train_tckd", "train_nckd",
             "hard_ratio", "avg_true_rank",
             "train_acc", "val_loss", "val_acc", "lr", "time_s",
+            "val_true_class_margin",
         ])
 
     logger.info("\n" + "=" * 70)
@@ -1499,6 +1578,7 @@ def main():
             train_teacher1_kd, train_teacher2_kd, train_teacher2_active,
             train_hard_ratio, train_true_rank,
             train_tdl, train_contrast, train_topkd,
+            train_tckd, train_nckd,
         ) = train_one_epoch(
             student, teacher, train_loader, optimizer, scheduler,
             criterion, scaler, device, epoch, cfg, logger,
@@ -1514,10 +1594,11 @@ def main():
         elapsed = time.time() - t0
         current_lr = optimizer.param_groups[0]["lr"]
 
-        is_best = val_acc > best_val_acc
+        best_val_acc = max(best_val_acc, val_acc)
+        is_best = val_loss < best_val_loss
         if is_best:
-            best_val_acc = val_acc
-            best_epoch   = epoch
+            best_val_loss = val_loss
+            best_epoch = epoch
 
         save_checkpoint(student, epoch, val_acc, is_best, output_dir, cfg)
 
@@ -1528,6 +1609,7 @@ def main():
             f"rel={train_rel:.4f} emb={train_emb:.4f} logit_kd={train_logit_kd:.4f} "
             f"topk={train_topk:.4f} margin={train_margin:.4f} anchor={train_anchor:.4f} "
             f"tdl={train_tdl:.4f} contrast={train_contrast:.4f} topkd={train_topkd:.4f} "
+            f"tckd={train_tckd:.4f} nckd={train_nckd:.4f} "
             f"t1={train_teacher1_kd:.4f} t2={train_teacher2_kd:.4f} "
             f"t2_active={train_teacher2_active:.2f} "
             f"hard={train_hard_ratio:.2f} rank={train_true_rank:.2f} "
@@ -1554,6 +1636,8 @@ def main():
             "train_tdl": round(train_tdl, 6),
             "train_contrast": round(train_contrast, 6),
             "train_topkd": round(train_topkd, 6),
+            "train_tckd": round(train_tckd, 6),
+            "train_nckd": round(train_nckd, 6),
             "hard_ratio": round(train_hard_ratio, 6),
             "avg_true_rank": round(train_true_rank, 6),
             "train_acc" : round(train_acc, 4),
@@ -1561,6 +1645,7 @@ def main():
             "val_acc"   : round(val_acc, 4),
             "lr"        : round(current_lr, 8),
             "time_s"    : round(elapsed, 1),
+            "val_true_class_margin": round(val_results["true_class_margin"], 6),
         }
         history.append(row)
 
@@ -1569,7 +1654,10 @@ def main():
 
     # ── Final test evaluation ──
     logger.info("\n" + "=" * 70)
-    logger.info(f"  Training selesai. Best epoch={best_epoch}  best_val_acc={best_val_acc:.4f}")
+    logger.info(
+        f"  Training selesai. Best val_loss epoch={best_epoch} "
+        f"best_val_loss={best_val_loss:.6f} best_val_acc={best_val_acc:.4f}"
+    )
 
     best_model_path = output_dir / "best_model.pth"
     if best_model_path.exists():
@@ -1579,37 +1667,46 @@ def main():
     else:
         logger.info("  best_model.pth tidak ada (epochs=0) — evaluasi menggunakan weights yang sudah di-load.")
 
-    logger.info("  Evaluasi TEST set...")
-    test_results = evaluate(student, test_loader, device, compute_auc=True)
+    test_results = None
+    if not cfg.skip_test_evaluation:
+        logger.info("  Evaluasi TEST set...")
+        test_results = evaluate(student, test_loader, device, compute_auc=True)
 
     # EER
     try:
+        if test_results is None:
+            raise RuntimeError("test evaluation disabled")
         eer = compute_eer(student, test_loader, device)
         test_results["eer_pct"] = round(eer * 100, 4)
     except Exception as e:
-        test_results["eer_pct"] = None
-        logger.warning(f"  EER gagal dihitung: {e}")
+        if test_results is not None:
+            test_results["eer_pct"] = None
+            logger.warning(f"  EER gagal dihitung: {e}")
 
-    logger.info("=" * 70)
-    logger.info(f"  TEST ACCURACY  : {test_results['acc']*100:.2f}%")
-    logger.info(f"  TEST LOSS      : {test_results['loss']:.4f}")
-    logger.info(f"  TEST AUC       : {test_results.get('auc', 'N/A')}")
-    logger.info(f"  TEST EER       : {test_results.get('eer_pct', 'N/A')}%")
-    logger.info("=" * 70)
+    if test_results is not None:
+        logger.info("=" * 70)
+        logger.info(f"  TEST ACCURACY  : {test_results['acc']*100:.2f}%")
+        logger.info(f"  TEST LOSS      : {test_results['loss']:.4f}")
+        logger.info(f"  TEST AUC       : {test_results.get('auc', 'N/A')}")
+        logger.info(f"  TEST EER       : {test_results.get('eer_pct', 'N/A')}%")
+        logger.info("=" * 70)
+    else:
+        logger.info("  TEST evaluation skipped; screening results contain validation metrics only.")
 
     # ── Simpan hasil ──
     final_results = {
         "timestamp"    : datetime.now().isoformat(),
         "best_epoch"   : best_epoch,
+        "best_val_loss": round(best_val_loss, 6),
         "best_val_acc" : round(best_val_acc, 4),
         "initial_val_acc": round(initial_val_results["acc"], 4),
         "initial_val_loss": round(initial_val_results["loss"], 4),
-        "initial_test_acc": round(initial_test_results["acc"], 4),
-        "initial_test_loss": round(initial_test_results["loss"], 4),
-        "test_acc"     : round(test_results["acc"], 4),
-        "test_loss"    : round(test_results["loss"], 4),
-        "test_auc"     : test_results.get("auc"),
-        "test_eer_pct" : test_results.get("eer_pct"),
+        "initial_test_acc": None if initial_test_results is None else round(initial_test_results["acc"], 4),
+        "initial_test_loss": None if initial_test_results is None else round(initial_test_results["loss"], 4),
+        "test_acc"     : None if test_results is None else round(test_results["acc"], 4),
+        "test_loss"    : None if test_results is None else round(test_results["loss"], 4),
+        "test_auc"     : None if test_results is None else test_results.get("auc"),
+        "test_eer_pct" : None if test_results is None else test_results.get("eer_pct"),
         "kd_config"    : {
             "teacher"    : cfg.teacher_arch,
             "teacher_weights": cfg.teacher_weights,
@@ -1618,6 +1715,11 @@ def main():
             "kd_method"  : cfg.kd_method,
             "temperature": cfg.temperature,
             "alpha"      : cfg.alpha,
+            "dkd_alpha"  : cfg.dkd_alpha,
+            "dkd_beta"   : cfg.dkd_beta,
+            "dkd_warmup_epochs": cfg.dkd_warmup_epochs,
+            "adaface"    : cfg.adaface,
+            "skip_test_evaluation": cfg.skip_test_evaluation,
             "kd_weight"  : round(1 - cfg.alpha, 2),
             "ce_weight"  : cfg.ce_weight,
             "relation_weight": cfg.relation_weight,
@@ -1660,7 +1762,8 @@ def main():
             "lr"         : cfg.lr,
         },
     }
-    with open(output_dir / "test_results.json", "w") as f:
+    result_name = "screening_results.json" if cfg.skip_test_evaluation else "test_results.json"
+    with open(output_dir / result_name, "w") as f:
         json.dump(final_results, f, indent=2)
 
     # Plot

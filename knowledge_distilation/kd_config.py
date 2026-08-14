@@ -77,6 +77,15 @@ class KDConfig:
     # Method: "hinton" preserves the original logit KD path. "pairwise",
     # "embedding", and "hybrid" use biometric embedding/relation KD.
     kd_method: str = "hinton"
+    dkd_alpha: float = 1.0
+    dkd_beta: float = 8.0
+    dkd_warmup_epochs: int = 20
+    skip_test_evaluation: bool = False
+    adaface: bool = False
+    adaface_m: float = 0.4
+    adaface_h: float = 0.333
+    adaface_s: float = 64.0
+    adaface_t_alpha: float = 0.01
     ce_weight: float = 1.0
     relation_weight: float = 0.05
     embedding_weight: float = 0.0

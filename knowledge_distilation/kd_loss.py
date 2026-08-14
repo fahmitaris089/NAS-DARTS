@@ -160,6 +160,64 @@ class SoftCEKDLoss(nn.Module):
         return loss_total, breakdown
 
 
+class DecoupledKDLoss(nn.Module):
+    """Official DKD decomposition into target-class and non-target-class KD."""
+
+    def __init__(self, temperature: float = 4.0, alpha: float = 1.0,
+                 beta: float = 8.0, warmup_epochs: int = 20,
+                 label_smoothing: float = 0.0):
+        super().__init__()
+        if temperature <= 0 or alpha < 0 or beta < 0 or warmup_epochs < 0:
+            raise ValueError("Invalid DKD hyperparameters")
+        self.temperature = float(temperature)
+        self.alpha = float(alpha)
+        self.beta = float(beta)
+        self.warmup_epochs = int(warmup_epochs)
+        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+
+    @staticmethod
+    def _cat_mask(probabilities: torch.Tensor, target_mask: torch.Tensor) -> torch.Tensor:
+        target = (probabilities * target_mask).sum(dim=1, keepdim=True)
+        non_target = (probabilities * (~target_mask)).sum(dim=1, keepdim=True)
+        return torch.cat([target, non_target], dim=1)
+
+    def forward(self, logits_student: torch.Tensor, logits_teacher: torch.Tensor,
+                targets: torch.Tensor, *, epoch: int = 1,
+                classification_logits: torch.Tensor | None = None) -> tuple[torch.Tensor, dict]:
+        if logits_student.shape != logits_teacher.shape:
+            raise ValueError(f"Student/teacher logits differ: {logits_student.shape} vs {logits_teacher.shape}")
+        if logits_student.ndim != 2 or targets.shape != (logits_student.shape[0],):
+            raise ValueError("DKD expects [B,C] logits and [B] integer targets")
+        class_logits = classification_logits if classification_logits is not None else logits_student
+        loss_ce = self.ce(class_logits, targets)
+        target_mask = torch.zeros_like(logits_student, dtype=torch.bool)
+        target_mask.scatter_(1, targets.unsqueeze(1), True)
+        temperature = self.temperature
+
+        student_prob = F.softmax(logits_student / temperature, dim=1)
+        teacher_prob = F.softmax(logits_teacher / temperature, dim=1)
+        student_two = self._cat_mask(student_prob, target_mask).clamp_min(1e-12)
+        teacher_two = self._cat_mask(teacher_prob, target_mask).clamp_min(1e-12)
+        loss_tckd = F.kl_div(student_two.log(), teacher_two, reduction="batchmean") * temperature ** 2
+
+        suppress = 1000.0 * target_mask.to(logits_student.dtype)
+        student_non_target = F.log_softmax(logits_student / temperature - suppress, dim=1)
+        teacher_non_target = F.softmax(logits_teacher / temperature - suppress, dim=1)
+        loss_nckd = F.kl_div(student_non_target, teacher_non_target, reduction="batchmean") * temperature ** 2
+
+        warmup = 1.0 if self.warmup_epochs == 0 else min(float(epoch) / self.warmup_epochs, 1.0)
+        loss_dkd = warmup * (self.alpha * loss_tckd + self.beta * loss_nckd)
+        loss_total = loss_ce + loss_dkd
+        return loss_total, {
+            "loss_ce": loss_ce.item(),
+            "loss_tckd": loss_tckd.item(),
+            "loss_nckd": loss_nckd.item(),
+            "loss_kd": loss_dkd.item(),
+            "loss_total": loss_total.item(),
+            "dkd_warmup": warmup,
+        }
+
+
 # ─── 3. Biometric representation KD losses ──────────────────────────────────
 
 class PairwiseRelationKDLoss(nn.Module):
@@ -884,9 +942,17 @@ def get_kd_loss(method: str = "hinton", **kwargs) -> nn.Module:
             alpha           = kwargs.get("alpha", 0.3),
             label_smoothing = kwargs.get("label_smoothing", 0.1),
         )
+    if method == "dkd":
+        return DecoupledKDLoss(
+            temperature=kwargs.get("temperature", 4.0),
+            alpha=kwargs.get("dkd_alpha", 1.0),
+            beta=kwargs.get("dkd_beta", 8.0),
+            warmup_epochs=kwargs.get("dkd_warmup_epochs", 20),
+            label_smoothing=kwargs.get("label_smoothing", 0.0),
+        )
     elif method == "soft_ce":
         return SoftCEKDLoss(
             alpha = kwargs.get("alpha", 0.3),
         )
     else:
-        raise ValueError(f"Unknown KD method: {method}. Pilih 'hinton' atau 'soft_ce'.")
+        raise ValueError(f"Unknown KD method: {method}. Pilih 'hinton', 'dkd', atau 'soft_ce'.")

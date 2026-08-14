@@ -47,6 +47,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from nas_config import RETRAIN_CFG, RETRAIN_DIR, NUM_CLASSES, SEED
 from genotypes import dict_to_genotype, genotype_to_dict
 from model_eval import EvalNetwork, count_parameters, find_optimal_C_init, param_breakdown
+from adaface import replace_linear_with_adaface
 from palm_vein_dataset import create_retrain_dataloaders
 from utils import set_seed, get_device, setup_logger, AverageMeter
 
@@ -54,7 +55,7 @@ from utils import set_seed, get_device, setup_logger, AverageMeter
 # ─── Training One Epoch ─────────────────────────────────────────────────────
 
 def train_one_epoch(model, loader, criterion, optimizer, device,
-                    auxiliary, aux_weight, grad_clip):
+                    auxiliary, aux_weight, grad_clip, loss_mode="ce"):
     """Train one epoch with optional auxiliary head loss."""
     model.train()
     losses = AverageMeter()
@@ -66,9 +67,16 @@ def train_one_epoch(model, loader, criterion, optimizer, device,
 
         optimizer.zero_grad()
 
-        output = model(images)
+        if loss_mode == "adaface":
+            logits, margin_logits, _ = model.forward_adaface(images, labels)
+            loss = criterion(margin_logits, labels)
+            output = logits
+        else:
+            output = model(images)
 
-        if auxiliary and isinstance(output, tuple):
+        if loss_mode == "adaface":
+            pass
+        elif auxiliary and isinstance(output, tuple):
             logits, logits_aux = output
             loss = criterion(logits, labels) + aux_weight * criterion(logits_aux, labels)
         else:
@@ -98,6 +106,7 @@ def validate(model, loader, criterion, device):
     model.eval()
     losses = AverageMeter()
     top1 = AverageMeter()
+    margins = AverageMeter()
 
     for images, labels in loader:
         images = images.to(device, non_blocking=True)
@@ -109,10 +118,15 @@ def validate(model, loader, criterion, device):
 
         _, pred = logits.max(1)
         acc = pred.eq(labels).float().mean().item()
+        true_logits = logits.gather(1, labels.unsqueeze(1)).squeeze(1)
+        competing_logits = logits.clone()
+        competing_logits.scatter_(1, labels.unsqueeze(1), float("-inf"))
+        true_class_margin = (true_logits - competing_logits.max(dim=1).values).mean().item()
         losses.update(loss.item(), images.size(0))
         top1.update(acc, images.size(0))
+        margins.update(true_class_margin, images.size(0))
 
-    return losses.avg, top1.avg
+    return losses.avg, top1.avg, margins.avg
 
 
 # ─── Test Evaluation (Full Metrics) ─────────────────────────────────────────
@@ -281,7 +295,9 @@ def main():
     parser.add_argument("--epochs", type=int, default=RETRAIN_CFG["epochs"])
     parser.add_argument("--batch_size", type=int, default=RETRAIN_CFG["batch_size"])
     parser.add_argument("--lr", type=float, default=RETRAIN_CFG["lr"])
+    parser.add_argument("--lr_min", type=float, default=RETRAIN_CFG["lr_min"])
     parser.add_argument("--weight_decay", type=float, default=RETRAIN_CFG["weight_decay"])
+    parser.add_argument("--warmup_epochs", type=int, default=RETRAIN_CFG["warmup_epochs"])
     parser.add_argument("--drop_path_prob", type=float, default=RETRAIN_CFG["drop_path_prob"])
     parser.add_argument("--cutout_length", type=int, default=RETRAIN_CFG["cutout_length"])
     parser.add_argument("--augmentation_policy", type=str, default="v1_legacy",
@@ -295,9 +311,16 @@ def main():
     parser.add_argument("--no_auxiliary", action="store_true")
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--num_workers", type=int, default=RETRAIN_CFG["num_workers"])
+    parser.add_argument("--loss-mode", choices=["ce", "adaface"], default="ce")
+    parser.add_argument("--adaface-m", type=float, default=0.4)
+    parser.add_argument("--adaface-h", type=float, default=0.333)
+    parser.add_argument("--adaface-s", type=float, default=64.0)
+    parser.add_argument("--adaface-t-alpha", type=float, default=0.01)
+    parser.add_argument("--skip-test-evaluation", action="store_true",
+                        help="Stop after validation-based checkpointing during screening")
     args = parser.parse_args()
 
-    use_auxiliary = args.auxiliary and not args.no_auxiliary
+    use_auxiliary = args.auxiliary and not args.no_auxiliary and args.loss_mode != "adaface"
 
     # Parse reduction indices ("2,5" -> [2, 5]); None keeps the default positions.
     reduction_indices = None
@@ -361,6 +384,16 @@ def main():
         stem_downsample=args.stem_downsample,
         reduction_indices=reduction_indices,
     ).to(device)
+    if args.loss_mode == "adaface":
+        replace_linear_with_adaface(
+            model, num_classes=num_classes, m=args.adaface_m, h=args.adaface_h,
+            s=args.adaface_s, t_alpha=args.adaface_t_alpha,
+        )
+        model.to(device)
+        logger.info(
+            f"  Classification head: AdaFace m={args.adaface_m} h={args.adaface_h} "
+            f"s={args.adaface_s} t_alpha={args.adaface_t_alpha}"
+        )
 
     total_params = count_parameters(model)
     logger.info(f"\nModel Architecture:")
@@ -389,14 +422,14 @@ def main():
         weight_decay=args.weight_decay,
     )
 
-    warmup_epochs = RETRAIN_CFG["warmup_epochs"]
+    warmup_epochs = args.warmup_epochs
     warmup_sched = LinearLR(optimizer,
                             start_factor=RETRAIN_CFG["warmup_factor"],
                             total_iters=warmup_epochs)
     cosine_sched = CosineAnnealingLR(
         optimizer,
         T_max=max(1, args.epochs - warmup_epochs),
-        eta_min=RETRAIN_CFG["lr_min"],
+        eta_min=args.lr_min,
     )
     scheduler = SequentialLR(
         optimizer,
@@ -414,6 +447,11 @@ def main():
         "device": str(device),
         "timestamp": datetime.now().isoformat(),
         "retrain_cfg": {k: str(v) for k, v in RETRAIN_CFG.items()},
+        "loss_mode": args.loss_mode,
+        "adaface_m": args.adaface_m,
+        "adaface_h": args.adaface_h,
+        "adaface_s": args.adaface_s,
+        "adaface_t_alpha": args.adaface_t_alpha,
     }
 
     with open(save_dir / "config.json", "w") as f:
@@ -425,7 +463,7 @@ def main():
     log_writer = csv.writer(log_file)
     log_writer.writerow([
         "epoch", "train_loss", "train_acc", "val_loss", "val_acc",
-        "lr", "drop_path", "epoch_time_sec",
+        "val_true_class_margin", "lr", "drop_path", "epoch_time_sec",
     ])
 
     # ─── Training Loop ───────────────────────────────────────────────────
@@ -433,6 +471,8 @@ def main():
     best_epoch = 0
     best_val_acc = -float("inf")
     best_acc_epoch = 0
+    best_checkpoint_margin = -float("inf")
+    maximum_val_margin = -float("inf")
     training_start = time.time()
 
     logger.info(f"\n{'='*60}")
@@ -457,10 +497,11 @@ def main():
             auxiliary=use_auxiliary,
             aux_weight=RETRAIN_CFG["auxiliary_weight"],
             grad_clip=RETRAIN_CFG["grad_clip"],
+            loss_mode=args.loss_mode,
         )
 
         # Validate
-        val_loss, val_acc = validate(model, val_loader, criterion, device)
+        val_loss, val_acc, val_margin = validate(model, val_loader, criterion, device)
 
         scheduler.step()
         current_lr = optimizer.param_groups[0]["lr"]
@@ -471,6 +512,7 @@ def main():
             epoch,
             f"{train_loss:.6f}", f"{train_acc:.6f}",
             f"{val_loss:.6f}", f"{val_acc:.6f}",
+            f"{val_margin:.6f}",
             f"{current_lr:.8f}", f"{drop_path:.4f}", f"{epoch_time:.2f}",
         ])
         log_file.flush()
@@ -480,7 +522,10 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch
+            best_checkpoint_margin = val_margin
             torch.save(model.state_dict(), save_dir / "best_model.pth")
+
+        maximum_val_margin = max(maximum_val_margin, val_margin)
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
@@ -498,7 +543,7 @@ def main():
             logger.info(
                 f"  E{epoch:>4}/{args.epochs} │ "
                 f"train_loss={train_loss:.4f}  acc={train_acc:.4f} │ "
-                f"val_loss={val_loss:.4f}  acc={val_acc:.4f} │ "
+                f"val_loss={val_loss:.4f}  acc={val_acc:.4f}  margin={val_margin:.4f} │ "
                 f"lr={current_lr:.6f}  dp={drop_path:.3f}  "
                 f"{epoch_time:.1f}s{marker}"
             )
@@ -522,11 +567,37 @@ def main():
             stem_downsample=args.stem_downsample,
             reduction_indices=reduction_indices,
         ).to(device)
+        if args.loss_mode == "adaface":
+            replace_linear_with_adaface(
+                eval_model, num_classes=num_classes, m=args.adaface_m, h=args.adaface_h,
+                s=args.adaface_s, t_alpha=args.adaface_t_alpha,
+            )
+            eval_model.to(device)
         state_dict = torch.load(weights_path, map_location="cpu")
         eval_model.load_state_dict(state_dict)
         eval_model.to(device)
         eval_model.eval()
         return eval_model
+
+    if args.skip_test_evaluation:
+        screening = {
+            "status": "screening_complete_test_not_evaluated",
+            "best_epoch": best_epoch,
+            "best_validation_loss": float(best_val_loss),
+            "best_validation_accuracy": float(best_val_acc),
+            "best_validation_accuracy_epoch": best_acc_epoch,
+            "best_checkpoint_true_class_margin": float(best_checkpoint_margin),
+            "maximum_validation_true_class_margin": float(maximum_val_margin),
+            "checkpoint_selection": "minimum_validation_loss",
+            "best_checkpoint": str(save_dir / "best_model.pth"),
+            "loss_mode": args.loss_mode,
+        }
+        with open(save_dir / "screening_results.json", "w") as f:
+            json.dump(screening, f, indent=2)
+        plot_training_curves(log_path, save_dir)
+        logger.info("Test evaluation skipped; screening stopped after validation checkpointing.")
+        logger.info(json.dumps(screening, indent=2))
+        return screening
 
     # ─── Test Evaluation ─────────────────────────────────────────────────
     logger.info(f"\n── Evaluating best model (epoch {best_epoch}) ──")

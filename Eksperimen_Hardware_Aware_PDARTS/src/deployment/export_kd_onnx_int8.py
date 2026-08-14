@@ -53,6 +53,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src" / "nas"))
 
 from genotypes import dict_to_genotype
 from model_eval import EvalNetwork
+from adaface import replace_linear_with_adaface
 from operations import fuse_reparam_model
 
 
@@ -126,6 +127,17 @@ def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwor
         stem_downsample   = stem_downsample,
         reduction_indices = reduction_indices,
     )
+
+    use_adaface = bool(student_cfg.get("loss_mode") == "adaface" or kd_cfg.get("adaface"))
+    if use_adaface:
+        replace_linear_with_adaface(
+            model, num_classes=num_classes,
+            m=float(student_cfg.get("adaface_m", kd_cfg.get("adaface_m", 0.4))),
+            h=float(student_cfg.get("adaface_h", kd_cfg.get("adaface_h", 0.333))),
+            s=float(student_cfg.get("adaface_s", kd_cfg.get("adaface_s", 64.0))),
+            t_alpha=float(student_cfg.get("adaface_t_alpha", kd_cfg.get("adaface_t_alpha", 0.01))),
+        )
+        print("  Classifier   : AdaFace cosine inference head (training margin disabled)")
 
     state_dict = torch.load(model_path, map_location="cpu")
     # Skip auxiliary head keys jika ada
