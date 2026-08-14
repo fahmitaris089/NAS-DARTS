@@ -14,9 +14,13 @@ from src.data import create_calibration_manifest, load_dataset_config, validate_
 
 def main():
     parser = argparse.ArgumentParser(description="Validate thesis split and create the train-only INT8 manifest")
+    parser.add_argument(
+        "--dataset-config", type=Path, default=Path("configs/dataset.json"),
+        help="Dataset configuration JSON to validate and prepare.",
+    )
     parser.add_argument("--skip-image-check", action="store_true")
     args = parser.parse_args()
-    config = load_dataset_config()
+    config = load_dataset_config(args.dataset_config)
     validation = validate_dataset(config, verify_images=not args.skip_image_check)
     manifest = create_calibration_manifest(config)
     calibration = validate_calibration_manifest(config, manifest)

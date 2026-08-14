@@ -1,0 +1,12 @@
+{
+  "data_dir": "../preprocessed_results",
+  "split_path": "dataset/splits/split_info_60_20_20_seed42.json",
+  "calibration_manifest": "dataset/calibration_manifest_60_20_20_seed42.json",
+  "expected_total": 8340,
+  "expected_classes": 834,
+  "expected_counts": {"train": 5004, "val": 1668, "test": 1668},
+  "input_size": 224,
+  "channels": 3,
+  "imagenet_mean": [0.485, 0.456, 0.406],
+  "imagenet_std": [0.229, 0.224, 0.225]
+}

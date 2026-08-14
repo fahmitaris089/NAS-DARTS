@@ -13,7 +13,7 @@ import torch
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.common import load_json, save_json, select_device, set_seed
+from src.common import load_json, save_json, select_device, set_seed, sha256_file
 from src.data.dataset import build_dataloaders, load_dataset_config, validate_dataset
 from src.models import MODEL_NAMES, build_model, count_parameters
 from src.models.factory import PRETRAINED_MODELS
@@ -29,6 +29,10 @@ def parse_args():
     parser.add_argument(
         "--training-config", type=Path,
         help="Optional training configuration JSON. Its protocol must match --protocol.",
+    )
+    parser.add_argument(
+        "--dataset-config", type=Path, default=Path("configs/dataset.json"),
+        help="Dataset configuration JSON; defaults to the controlled 80:10:10 protocol.",
     )
     parser.add_argument(
         "--experiment-name",
@@ -60,7 +64,7 @@ def main():
         protocol["batch_size"] = args.batch_size
     if args.num_workers is not None:
         protocol["num_workers"] = args.num_workers
-    dataset_config = load_dataset_config()
+    dataset_config = load_dataset_config(args.dataset_config)
     validation = validate_dataset(dataset_config, verify_images=True)
     set_seed(args.seed)
     device = select_device(args.device)
@@ -80,6 +84,7 @@ def main():
         "num_classes": len(label_map),
         "parameters": count_parameters(model),
         "split_sha256": validation["split_sha256"],
+        "dataset_config_sha256": sha256_file(dataset_config["config_path"]),
     }
     if hasattr(model, "reconstruction_metadata"):
         metadata["architecture_reconstruction"] = model.reconstruction_metadata()

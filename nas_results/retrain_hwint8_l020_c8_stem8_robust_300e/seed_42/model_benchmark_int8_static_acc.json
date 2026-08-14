@@ -1,0 +1,8 @@
+{
+  "accuracy": 0.995204,
+  "correct": 830,
+  "total": 834,
+  "num_classes": 834,
+  "data_dir": "/Users/fahmitaris/Downloads/NAS-DARTS-TEMP/preprocessed_results",
+  "split_path": "/Users/fahmitaris/Downloads/NAS-DARTS/PalmVein_Lightweight_Benchmark/dataset/splits/split_info.json"
+}
