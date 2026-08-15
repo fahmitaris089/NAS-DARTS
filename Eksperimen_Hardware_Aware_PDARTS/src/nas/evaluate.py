@@ -39,7 +39,12 @@ def main():
                         help="Path to genotype JSON")
     parser.add_argument("--C_init", type=int, default=None,
                         help="C_init (auto-detect from config if not set)")
-    parser.add_argument("--num_cells", type=int, default=RETRAIN_CFG["num_cells"])
+    parser.add_argument("--num_cells", type=int, default=None,
+                        help="Number of cells (default: read from checkpoint config)")
+    parser.add_argument("--stem_downsample", type=int, default=None,
+                        help="Stem downsampling factor (default: read from config)")
+    parser.add_argument("--reduction_indices", type=str, default=None,
+                        help="Comma-separated reduction cell indices (default: read from config)")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--data_dir", type=str, default=None)
     parser.add_argument("--split_path", type=str, default=None)
@@ -48,17 +53,44 @@ def main():
 
     device = get_device()
 
-    # Try to load config for C_init
-    C_init = args.C_init
+    # Load the effective training configuration stored beside the checkpoint.
+    # Do not use the nested ``retrain_cfg`` snapshot here: it records project
+    # defaults, which may have been overridden by the original CLI invocation.
     retrain_dir = Path(args.model_path).parent
     config_path = retrain_dir / "config.json"
-    if C_init is None and config_path.exists():
+    run_cfg = {}
+    if config_path.exists():
         with open(config_path) as f:
-            cfg = json.load(f)
-        C_init = cfg.get("C_init", RETRAIN_CFG["C_init"])
-        print(f"Loaded C_init={C_init} from config")
-    elif C_init is None:
-        C_init = RETRAIN_CFG["C_init"]
+            run_cfg = json.load(f)
+
+    C_init = args.C_init if args.C_init is not None else int(
+        run_cfg.get("C_init", RETRAIN_CFG["C_init"])
+    )
+    num_cells = args.num_cells if args.num_cells is not None else int(
+        run_cfg.get("num_cells", RETRAIN_CFG["num_cells"])
+    )
+    stem_downsample = args.stem_downsample if args.stem_downsample is not None else int(
+        run_cfg.get("stem_downsample", 2)
+    )
+    reduction_value = (
+        args.reduction_indices
+        if args.reduction_indices is not None
+        else run_cfg.get("reduction_indices")
+    )
+    if isinstance(reduction_value, str):
+        reduction_indices = [int(x) for x in reduction_value.split(",") if x.strip()]
+    elif reduction_value is None:
+        reduction_indices = None
+    else:
+        reduction_indices = [int(x) for x in reduction_value]
+
+    data_dir = args.data_dir or run_cfg.get("data_dir")
+    split_path = args.split_path or run_cfg.get("split_path")
+    print(
+        "Effective architecture: "
+        f"C_init={C_init}, cells={num_cells}, stem_downsample={stem_downsample}, "
+        f"reduction_indices={reduction_indices}"
+    )
 
     output_dir = Path(args.output_dir) if args.output_dir else retrain_dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -67,53 +99,42 @@ def main():
     with open(args.genotype) as f:
         genotype = dict_to_genotype(json.load(f))
 
-    # Build model WITH auxiliary head to get accurate param count
-    model_with_aux = EvalNetwork(
-        genotype=genotype,
-        C_init=C_init,
-        num_cells=args.num_cells,
-        num_classes=NUM_CLASSES,
-        auxiliary=True,   # include aux head for correct param count
-        dropout=RETRAIN_CFG["dropout"],
-    ).to(device)
+    state_dict = torch.load(args.model_path, map_location="cpu", weights_only=False)
+    if isinstance(state_dict, dict) and "student" in state_dict:
+        state_dict = state_dict["student"]
+    state_dict = {k: v for k, v in state_dict.items()
+                  if not k.startswith("_auxiliary_head")}
 
-    # Load weights into aux model for param counting
-    state_dict = torch.load(args.model_path, map_location=device)
-    model_with_aux.load_state_dict(state_dict, strict=False)
-    total_params = count_parameters(model_with_aux)
-
-    # Prefer param count from config.json if available (most reliable)
-    if config_path.exists():
-        with open(config_path) as f:
-            _cfg = json.load(f)
-        config_params = _cfg.get("total_params", None)
-        if config_params:
-            total_params = config_params
-            print(f"Using total_params={total_params:,} from config.json")
-
-    # Build eval model WITHOUT aux head (aux only needed during training)
+    # The selected PK-CE checkpoint was trained without an auxiliary head.
+    # Reconstruct the exact inference architecture, including its stem and
+    # explicit reduction locations, and require an exact state-dict match.
     model = EvalNetwork(
         genotype=genotype,
         C_init=C_init,
-        num_cells=args.num_cells,
+        num_cells=num_cells,
         num_classes=NUM_CLASSES,
-        auxiliary=False,  # no aux for inference
+        auxiliary=False,
         dropout=RETRAIN_CFG["dropout"],
+        stem_downsample=stem_downsample,
+        reduction_indices=reduction_indices,
     ).to(device)
-
-    # Load weights, strip auxiliary head keys
-    state_dict = {k: v for k, v in state_dict.items()
-                  if not k.startswith("_auxiliary_head")}
-    model.load_state_dict(state_dict, strict=False)
+    model.load_state_dict(state_dict, strict=True)
     model.eval()
-    print(f"\nModel: NAS-PDARTS (C_init={C_init}, cells={args.num_cells})")
+    total_params = count_parameters(model)
+    config_params = run_cfg.get("total_params")
+    if config_params is not None and int(config_params) != total_params:
+        raise ValueError(
+            f"Parameter mismatch: reconstructed={total_params}, config={config_params}"
+        )
+
+    print(f"\nModel: NAS-PDARTS (C_init={C_init}, cells={num_cells})")
     print(f"Parameters: {total_params:,}")
     print(param_breakdown(model))
 
     # Data
     _, _, test_loader, data_info = create_retrain_dataloaders(
-        data_dir=args.data_dir,
-        split_path=args.split_path,
+        data_dir=data_dir,
+        split_path=split_path,
         batch_size=args.batch_size,
         num_workers=2,
         use_augmentation=False,
