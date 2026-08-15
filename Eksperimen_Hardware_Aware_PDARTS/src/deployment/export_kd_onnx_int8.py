@@ -25,6 +25,7 @@ Output:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -49,11 +50,12 @@ except ImportError as e:
     raise SystemExit(f"onnxruntime quantization modules unavailable: {e}")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = PROJECT_ROOT.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "nas"))
 
 from genotypes import dict_to_genotype
 from model_eval import EvalNetwork
-from adaface import replace_linear_with_adaface
+from adaface import replace_linear_with_adaface, replace_linear_with_arcface
 from operations import fuse_reparam_model
 
 
@@ -78,13 +80,22 @@ def save_json(path: Path, data: dict):
     print(f"  ✓ Saved: {path.name}")
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def resolve_path(path_value: str | Path | None, default: Path | None = None) -> Path | None:
     if path_value is None:
         return default
     path = Path(path_value)
     if path.is_absolute():
         return path
-    return PROJECT_ROOT / path
+    candidates = [Path.cwd() / path, REPOSITORY_ROOT / path, PROJECT_ROOT / path]
+    return next((candidate for candidate in candidates if candidate.exists()), REPOSITORY_ROOT / path)
 
 
 def parse_reduction_indices(raw_value) -> list[int] | None:
@@ -128,8 +139,19 @@ def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwor
         reduction_indices = reduction_indices,
     )
 
-    use_adaface = bool(student_cfg.get("loss_mode") == "adaface" or kd_cfg.get("adaface"))
-    if use_adaface:
+    loss_mode = student_cfg.get("loss_mode", "ce")
+    use_adaface = bool(loss_mode == "adaface" or kd_cfg.get("adaface"))
+    if loss_mode in {"arcface", "subcenter_arcface"}:
+        replace_linear_with_arcface(
+            model, num_classes=num_classes,
+            m=float(student_cfg.get("arcface_margin", 0.5)),
+            s=float(student_cfg.get("arcface_scale", 64.0)),
+            num_subcenters=int(student_cfg.get(
+                "arcface_subcenters", 2 if loss_mode == "subcenter_arcface" else 1
+            )),
+        )
+        print(f"  Classifier   : {loss_mode} cosine inference head (training margin disabled)")
+    elif use_adaface:
         replace_linear_with_adaface(
             model, num_classes=num_classes,
             m=float(student_cfg.get("adaface_m", kd_cfg.get("adaface_m", 0.4))),
@@ -138,12 +160,18 @@ def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwor
             t_alpha=float(student_cfg.get("adaface_t_alpha", kd_cfg.get("adaface_t_alpha", 0.01))),
         )
         print("  Classifier   : AdaFace cosine inference head (training margin disabled)")
-
-    state_dict = torch.load(model_path, map_location="cpu")
+    state_dict = torch.load(model_path, map_location="cpu", weights_only=False)
+    if isinstance(state_dict, dict) and "student" in state_dict:
+        state_dict = state_dict["student"]
     # Skip auxiliary head keys jika ada
     state_dict = {k: v for k, v in state_dict.items()
                   if not k.startswith("_auxiliary_head")}
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    material_missing = [key for key in missing if not key.startswith("_auxiliary_head")]
+    if material_missing or unexpected:
+        raise RuntimeError(
+            f"Checkpoint/model mismatch; missing={material_missing[:10]} unexpected={unexpected[:10]}"
+        )
     if missing:
         print(f"  [warn] Missing keys  : {missing[:3]}{'...' if len(missing)>3 else ''}")
     if unexpected:
@@ -421,6 +449,9 @@ def parse_args() -> argparse.Namespace:
                         help="Calibration image root")
     parser.add_argument("--num-calib", type=int, default=200,
                         help="Number of calibration images")
+    parser.add_argument("--calibration-manifest", type=Path,
+                        default=Path("PalmVein_Lightweight_Benchmark/dataset/calibration_manifest.json"),
+                        help="Manifest whose every selected entry must have source_split=train")
     
     # Benchmark
     parser.add_argument("--threads", type=int, default=4)
@@ -430,6 +461,8 @@ def parse_args() -> argparse.Namespace:
     # Accuracy evaluation
     parser.add_argument("--eval-accuracy", action="store_true",
                         help="Evaluate accuracy on test set")
+    parser.add_argument("--acknowledge-observed-test", action="store_true",
+                        help="Required with --eval-accuracy because this test split was previously observed")
     parser.add_argument("--data-dir", type=Path, default=None,
                         help="Dataset root directory. Default: infer from KD config")
     parser.add_argument("--split-path", type=Path, default=None,
@@ -440,12 +473,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.eval_accuracy and not args.acknowledge_observed_test:
+        raise SystemExit("--eval-accuracy requires --acknowledge-observed-test")
     model_dir  = args.model_dir.resolve()
     kd_config_path = model_dir / "config.json"
     model_path = args.weights if args.weights.is_absolute() else model_dir / args.weights
     fp32_path      = model_dir / f"{args.output_stem}.onnx"
     int8_path      = model_dir / f"{args.output_stem}_int8_static.onnx"
     calib_dir      = resolve_path(args.calib_dir)
+    calibration_manifest = resolve_path(args.calibration_manifest)
 
     if not kd_config_path.exists():
         raise FileNotFoundError(f"KD config not found: {kd_config_path}")
@@ -453,6 +489,8 @@ def main() -> None:
         raise FileNotFoundError(f"Weights not found: {model_path}")
     if not calib_dir.exists():
         raise FileNotFoundError(f"Calibration dir not found: {calib_dir}")
+    if calibration_manifest is None or not calibration_manifest.exists():
+        raise FileNotFoundError(f"Training-only calibration manifest not found: {calibration_manifest}")
 
     print_section("KD MODEL → ONNX FP32 + INT8 PIPELINE")
     print(f"  Model dir  : {model_dir}")
@@ -491,6 +529,14 @@ def main() -> None:
     # ─────────────────────────────────────────────────────────────────────────
     print_section("3. QUANTIZE TO INT8")
     calib_images = collect_calibration_images(calib_dir, args.num_calib)
+    manifest = load_json(calibration_manifest)
+    manifest_entries = manifest.get("entries", [])
+    if not manifest_entries or any(entry.get("source_split") != "train" for entry in manifest_entries):
+        raise ValueError("Calibration manifest must contain only source_split=train entries")
+    allowed_names = {entry.get("filename") for entry in manifest_entries}
+    unverified = [path.name for path in calib_images if path.name not in allowed_names]
+    if unverified:
+        raise ValueError(f"Calibration images absent from training-only manifest: {unverified[:10]}")
     print(f"  Calibration images: {len(calib_images)}")
 
     fp32_sess = make_session(fp32_path, args.threads)
@@ -543,6 +589,11 @@ def main() -> None:
         "fp32_size_mb" : round(fp32_size_mb, 4),
         "int8_size_mb" : round(int8_size_mb, 4),
         "backend"      : "onnxruntime",
+        "calibration_manifest": str(calibration_manifest),
+        "calibration_manifest_sha256": sha256_file(calibration_manifest),
+        "calibration_source_split": "train",
+        "calibration_images": len(calib_images),
+        "test_previously_observed_acknowledged": bool(args.acknowledge_observed_test),
         "kd_config"    : {
             "teacher_arch": kd_cfg.get("teacher_arch"),
             "temperature" : kd_cfg.get("temperature"),
@@ -557,6 +608,9 @@ def main() -> None:
         "fp32_onnx": str(fp32_path),
         "int8_onnx": str(int8_path),
         "calib_dir": str(calib_dir),
+        "calibration_manifest": str(calibration_manifest),
+        "calibration_manifest_sha256": sha256_file(calibration_manifest),
+        "calibration_source_split": "train",
         "threads": args.threads,
         "fp32_size_mb": round(fp32_size_mb, 4),
         "int8_size_mb": round(int8_size_mb, 4),

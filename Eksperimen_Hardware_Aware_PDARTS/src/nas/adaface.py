@@ -80,3 +80,61 @@ def replace_linear_with_adaface(
     head = AdaFaceHead(classifier.in_features, num_classes, m=m, h=h, s=s, t_alpha=t_alpha)
     model.classifier = head
     return head
+
+
+class ArcFaceHead(nn.Module):
+    """ArcFace classifier with optional K sub-centers per identity.
+
+    For K>1 the maximum cosine across sub-centers is used both to select the
+    target center during training and to produce one inference logit per class.
+    """
+
+    def __init__(self, embedding_size: int, classnum: int, *, m: float = 0.5,
+                 s: float = 64.0, num_subcenters: int = 1) -> None:
+        super().__init__()
+        if num_subcenters < 1:
+            raise ValueError("num_subcenters must be positive")
+        self.embedding_size = int(embedding_size)
+        self.classnum = int(classnum)
+        self.m = float(m)
+        self.s = float(s)
+        self.num_subcenters = int(num_subcenters)
+        self.weight = nn.Parameter(torch.empty(
+            self.classnum * self.num_subcenters, self.embedding_size
+        ))
+        nn.init.xavier_uniform_(self.weight)
+
+    def cosine_logits(self, embeddings: torch.Tensor) -> torch.Tensor:
+        embeddings = F.normalize(embeddings, p=2, dim=1, eps=1e-12)
+        weight = F.normalize(self.weight, p=2, dim=1, eps=1e-12)
+        cosine = F.linear(embeddings, weight).view(
+            embeddings.shape[0], self.classnum, self.num_subcenters
+        )
+        return cosine.max(dim=2).values * self.s
+
+    def forward(self, embeddings: torch.Tensor,
+                labels: torch.Tensor | None = None) -> torch.Tensor:
+        cosine = self.cosine_logits(embeddings) / self.s
+        if labels is None:
+            return cosine * self.s
+        target = cosine.gather(1, labels.view(-1, 1))
+        theta = torch.acos(target.clamp(-1.0 + 1e-4, 1.0 - 1e-4))
+        target_margin = torch.cos(theta + self.m)
+        output = cosine.clone()
+        output.scatter_(1, labels.view(-1, 1), target_margin)
+        return output * self.s
+
+
+def replace_linear_with_arcface(
+    model: nn.Module, *, num_classes: int, m: float = 0.5,
+    s: float = 64.0, num_subcenters: int = 1,
+) -> ArcFaceHead:
+    classifier = getattr(model, "classifier", None)
+    if not isinstance(classifier, nn.Linear):
+        raise TypeError("ArcFace replacement requires model.classifier to be nn.Linear")
+    head = ArcFaceHead(
+        classifier.in_features, num_classes, m=m, s=s,
+        num_subcenters=num_subcenters,
+    )
+    model.classifier = head
+    return head

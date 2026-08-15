@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from adaface import AdaFaceHead
+from adaface import AdaFaceHead, ArcFaceHead
 from knowledge_distilation.kd_loss import DecoupledKDLoss
 
 
@@ -87,6 +87,28 @@ class AdaFaceTests(unittest.TestCase):
         expected = head(sample).detach().numpy()
         np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
         self.assertTrue(np.array_equal(actual.argmax(1), expected.argmax(1)))
+
+
+class ArcFaceTests(unittest.TestCase):
+    def test_arcface_and_subcenter_shapes_and_gradients(self):
+        for centers in (1, 2):
+            head = ArcFaceHead(16, 10, num_subcenters=centers)
+            embeddings = torch.randn(8, 16, requires_grad=True)
+            labels = torch.arange(8) % 10
+            inference = head(embeddings)
+            margin = head(embeddings, labels)
+            self.assertEqual(tuple(inference.shape), (8, 10))
+            self.assertFalse(torch.allclose(inference, margin))
+            F.cross_entropy(margin, labels).backward()
+            self.assertTrue(torch.isfinite(embeddings.grad).all())
+            self.assertEqual(head.weight.shape[0], 10 * centers)
+
+    def test_subcenter_inference_uses_maximum_center(self):
+        head = ArcFaceHead(2, 2, s=1.0, num_subcenters=2)
+        with torch.no_grad():
+            head.weight.copy_(torch.tensor([[1., 0.], [0., 1.], [-1., 0.], [0., -1.]]))
+        logits = head(torch.tensor([[0., 2.]]))
+        self.assertGreater(float(logits[0, 0]), float(logits[0, 1]))
 
 
 if __name__ == "__main__":

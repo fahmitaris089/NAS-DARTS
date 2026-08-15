@@ -177,6 +177,20 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                         default=cfg.relation_difference_threshold)
     parser.add_argument("--adaptive_warmup_epochs", type=int,
                         default=cfg.adaptive_warmup_epochs)
+    parser.add_argument("--progressive_staging", action="store_true",
+                        help="Use fixed CE/center/relation stages with gradient-ratio calibration")
+    parser.add_argument("--progressive_center_start", type=int,
+                        default=cfg.progressive_center_start)
+    parser.add_argument("--progressive_relation_start", type=int,
+                        default=cfg.progressive_relation_start)
+    parser.add_argument("--progressive_calibration_batches", type=int,
+                        default=cfg.progressive_calibration_batches)
+    parser.add_argument("--progressive_center_grad_ratio", type=float,
+                        default=cfg.progressive_center_grad_ratio)
+    parser.add_argument("--progressive_feature_grad_ratio", type=float,
+                        default=cfg.progressive_feature_grad_ratio)
+    parser.add_argument("--progressive_relation_grad_ratio", type=float,
+                        default=cfg.progressive_relation_grad_ratio)
     parser.add_argument("--teacher_center_cache", default=cfg.teacher_center_cache)
     parser.add_argument("--initial_student_weights", default=cfg.initial_student_weights,
                         help="Optional common random initial state for controlled scratch runs")
@@ -334,6 +348,20 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.relation_topk       = args.relation_topk
     cfg.relation_difference_threshold = args.relation_difference_threshold
     cfg.adaptive_warmup_epochs = args.adaptive_warmup_epochs
+    cfg.progressive_staging = args.progressive_staging
+    cfg.progressive_center_start = args.progressive_center_start
+    cfg.progressive_relation_start = args.progressive_relation_start
+    cfg.progressive_calibration_batches = args.progressive_calibration_batches
+    cfg.progressive_center_grad_ratio = args.progressive_center_grad_ratio
+    cfg.progressive_feature_grad_ratio = args.progressive_feature_grad_ratio
+    cfg.progressive_relation_grad_ratio = args.progressive_relation_grad_ratio
+    if cfg.progressive_staging:
+        if cfg.kd_method != "adaptive_center_relation":
+            parser.error("--progressive_staging requires --kd_method adaptive_center_relation")
+        if not (1 <= cfg.progressive_center_start < cfg.progressive_relation_start <= args.epochs):
+            parser.error("progressive stages must satisfy 1 <= center_start < relation_start <= epochs")
+        if cfg.progressive_calibration_batches <= 0:
+            parser.error("--progressive_calibration_batches must be positive")
     cfg.teacher_center_cache = args.teacher_center_cache
     cfg.initial_student_weights = args.initial_student_weights
     cfg.resume_training_state = args.resume_training_state
@@ -1046,6 +1074,13 @@ def train_one_epoch(
     total_teacher1_kd = total_teacher2_kd = total_teacher2_active = 0.0
     total_tdl = total_contrast = total_topkd = 0.0
     total_tckd = total_nckd = 0.0
+    diagnostic_keys = (
+        "weighted_center", "weighted_feature", "weighted_relation",
+        "center_weight_effective", "feature_weight_effective", "relation_weight_effective",
+        "grad_norm_ce", "grad_norm_center", "grad_norm_feature", "grad_norm_relation",
+        "adaptive_stage",
+    )
+    progressive_totals = {key: 0.0 for key in diagnostic_keys}
     correct = n_samples = 0
 
     for batch_idx, (images, targets) in enumerate(loader):
@@ -1073,15 +1108,24 @@ def train_one_epoch(
                     logits_teacher2 = teacher2(mixed_images)
                 teacher_embeddings = None
             elif cfg.kd_method == "adaptive_center_relation":
-                logits_student, student_embeddings = student.forward_with_embeddings(mixed_images)
                 if is_mixed:
                     raise RuntimeError("Adaptive center-relation distillation requires unmixed labels")
+                if cfg.progressive_staging and epoch < cfg.progressive_center_start:
+                    teacher_embeddings = None
+                else:
+                    _, teacher_embeddings = teacher_forward_with_embeddings(
+                        teacher, cfg.teacher_arch, mixed_images
+                    )
+                logits_teacher = None
+            elif cfg.kd_method == "adaptive_center_relation":
+                logits_student, student_embeddings = student.forward_with_embeddings(mixed_images)
                 loss, breakdown = criterion(
                     logits_student=logits_student,
                     student_embeddings=student_embeddings,
                     teacher_embeddings=teacher_embeddings,
                     targets=targets,
                     epoch=epoch,
+                    batch_index=batch_idx,
                 )
             else:
                 logits_teacher, teacher_embeddings = teacher_forward_with_embeddings(
@@ -1196,6 +1240,8 @@ def train_one_epoch(
         total_topkd += breakdown.get("loss_topkd", 0.0)
         total_tckd += breakdown.get("loss_tckd", 0.0)
         total_nckd += breakdown.get("loss_nckd", 0.0)
+        for key in diagnostic_keys:
+            progressive_totals[key] += float(breakdown.get(key, 0.0))
 
         if (batch_idx + 1) % cfg.log_interval == 0:
             current_lr = optimizer.param_groups[0]["lr"]
@@ -1243,6 +1289,9 @@ def train_one_epoch(
     train_topkd = total_topkd / n_batches
     train_tckd = total_tckd / n_batches
     train_nckd = total_nckd / n_batches
+    progressive_metrics = {
+        key: value / n_batches for key, value in progressive_totals.items()
+    }
     train_acc  = correct    / n_samples
 
     return (
@@ -1253,6 +1302,7 @@ def train_one_epoch(
         train_hard_ratio, train_true_rank,
         train_tdl, train_contrast, train_topkd,
         train_tckd, train_nckd,
+        progressive_metrics,
     )
 
 # ─── Evaluation ──────────────────────────────────────────────────────────────
@@ -1708,10 +1758,18 @@ def main():
             difference_threshold=cfg.relation_difference_threshold,
             warmup_epochs=cfg.adaptive_warmup_epochs,
             label_smoothing=cfg.label_smoothing,
+            progressive_staging=cfg.progressive_staging,
+            center_start_epoch=cfg.progressive_center_start,
+            relation_start_epoch=cfg.progressive_relation_start,
+            calibration_batches=cfg.progressive_calibration_batches,
+            center_grad_ratio=cfg.progressive_center_grad_ratio,
+            feature_grad_ratio=cfg.progressive_feature_grad_ratio,
+            relation_grad_ratio=cfg.progressive_relation_grad_ratio,
         ).to(device)
         logger.info(
-            f"  Loss: {criterion.method_label}; CE + ramp20*(center={cfg.center_weight}, "
-            f"feature={cfg.feature_weight}, relation={cfg.relation_weight})"
+            f"  Loss: {criterion.method_label}; progressive={cfg.progressive_staging}; "
+            f"center_start={cfg.progressive_center_start}; "
+            f"relation_start={cfg.progressive_relation_start}; ramp={cfg.adaptive_warmup_epochs}"
         )
     else:
         use_relation = cfg.kd_method in {"pairwise", "hybrid"}
@@ -1837,26 +1895,30 @@ def main():
 
     csv_path = output_dir / "training_log.csv"
     csv_mode = "a" if cfg.resume_training_state and csv_path.exists() else "w"
+    training_log_fields = [
+        "epoch", "train_loss", "train_ce", "train_kd", "train_center",
+        "train_relation", "train_embedding", "train_logit_kd",
+        "train_topk", "train_margin", "train_anchor",
+        "train_teacher1_kd", "train_teacher2_kd", "teacher2_active",
+        "train_tdl", "train_contrast", "train_topkd", "train_tckd", "train_nckd",
+        "hard_ratio", "avg_true_rank", "weighted_center", "weighted_feature",
+        "weighted_relation", "center_weight_effective", "feature_weight_effective",
+        "relation_weight_effective", "grad_norm_ce", "grad_norm_center",
+        "grad_norm_feature", "grad_norm_relation", "adaptive_stage",
+        "train_acc", "val_loss", "val_acc", "lr", "time_s", "val_true_class_margin",
+    ]
     with open(csv_path, csv_mode, newline="") as f:
         writer = csv.writer(f)
         if csv_mode == "w":
-            writer.writerow([
-                "epoch", "train_loss", "train_ce", "train_kd", "train_center",
-                "train_relation", "train_embedding", "train_logit_kd",
-                "train_topk", "train_margin", "train_anchor",
-                "train_teacher1_kd", "train_teacher2_kd", "teacher2_active",
-                "train_tdl", "train_contrast", "train_topkd", "train_tckd", "train_nckd",
-                "hard_ratio", "avg_true_rank",
-                "train_acc", "val_loss", "val_acc", "lr", "time_s",
-                "val_true_class_margin",
-            ])
-            writer.writerow([
-                0, "", "", "", "", "", "", "", "", "", "", "", "", "",
-                "", "", "", "", "", "", "", "",
-                round(initial_val_results["loss"], 6),
-                round(initial_val_results["acc"], 4),
-                "", "", round(initial_val_results["true_class_margin"], 6),
-            ])
+            writer.writerow(training_log_fields)
+            initial_row = {key: "" for key in training_log_fields}
+            initial_row.update({
+                "epoch": 0,
+                "val_loss": round(initial_val_results["loss"], 6),
+                "val_acc": round(initial_val_results["acc"], 4),
+                "val_true_class_margin": round(initial_val_results["true_class_margin"], 6),
+            })
+            writer.writerow([initial_row[key] for key in training_log_fields])
 
     logger.info("\n" + "=" * 70)
     logger.info(f"  Mulai KD Training  |  {cfg.epochs} epochs  |  device={device}")
@@ -1881,6 +1943,7 @@ def main():
             train_hard_ratio, train_true_rank,
             train_tdl, train_contrast, train_topkd,
             train_tckd, train_nckd,
+            progressive_metrics,
         ) = train_one_epoch(
             student, teacher, train_loader, optimizer, scheduler,
             criterion, scaler, device, epoch, cfg, logger,
@@ -1958,6 +2021,14 @@ def main():
             f"t1={train_teacher1_kd:.4f} t2={train_teacher2_kd:.4f} "
             f"t2_active={train_teacher2_active:.2f} "
             f"hard={train_hard_ratio:.2f} rank={train_true_rank:.2f} "
+            f"stage={progressive_metrics['adaptive_stage']:.1f} "
+            f"w(c/f/r)={progressive_metrics['center_weight_effective']:.4g}/"
+            f"{progressive_metrics['feature_weight_effective']:.4g}/"
+            f"{progressive_metrics['relation_weight_effective']:.4g} "
+            f"g(ce/c/f/r)={progressive_metrics['grad_norm_ce']:.3g}/"
+            f"{progressive_metrics['grad_norm_center']:.3g}/"
+            f"{progressive_metrics['grad_norm_feature']:.3g}/"
+            f"{progressive_metrics['grad_norm_relation']:.3g} "
             f"train_acc={train_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} "
             f"{'** BEST_LOSS' if is_best_loss else ''}"
@@ -1987,6 +2058,7 @@ def main():
             "train_nckd": round(train_nckd, 6),
             "hard_ratio": round(train_hard_ratio, 6),
             "avg_true_rank": round(train_true_rank, 6),
+            **{key: round(value, 8) for key, value in progressive_metrics.items()},
             "train_acc" : round(train_acc, 4),
             "val_loss"  : round(val_loss, 6),
             "val_acc"   : round(val_acc, 4),
@@ -1997,7 +2069,7 @@ def main():
         history.append(row)
 
         with open(csv_path, "a", newline="") as f:
-            csv.writer(f).writerow(list(row.values()))
+            csv.writer(f).writerow([row.get(key, "") for key in training_log_fields])
 
     # ── Final test evaluation ──
     logger.info("\n" + "=" * 70)

@@ -49,7 +49,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from nas_config import RETRAIN_CFG, RETRAIN_DIR, NUM_CLASSES, SEED
 from genotypes import dict_to_genotype, genotype_to_dict
 from model_eval import EvalNetwork, count_parameters, find_optimal_C_init, param_breakdown
-from adaface import replace_linear_with_adaface
+from adaface import replace_linear_with_adaface, replace_linear_with_arcface
 from palm_vein_dataset import create_retrain_dataloaders
 from utils import set_seed, get_device, setup_logger, AverageMeter
 
@@ -69,14 +69,14 @@ def train_one_epoch(model, loader, criterion, optimizer, device,
 
         optimizer.zero_grad()
 
-        if loss_mode == "adaface":
+        if loss_mode in {"adaface", "arcface", "subcenter_arcface"}:
             logits, margin_logits, _ = model.forward_adaface(images, labels)
             loss = criterion(margin_logits, labels)
             output = logits
         else:
             output = model(images)
 
-        if loss_mode == "adaface":
+        if loss_mode in {"adaface", "arcface", "subcenter_arcface"}:
             pass
         elif auxiliary and isinstance(output, tuple):
             logits, logits_aux = output
@@ -316,11 +316,19 @@ def main():
     parser.add_argument("--no_auxiliary", action="store_true")
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--num_workers", type=int, default=RETRAIN_CFG["num_workers"])
-    parser.add_argument("--loss-mode", choices=["ce", "adaface"], default="ce")
+    parser.add_argument("--loss-mode", choices=[
+        "ce", "adaface", "arcface", "subcenter_arcface"
+    ], default="ce")
+    parser.add_argument("--label-smoothing", type=float,
+                        default=float(RETRAIN_CFG["label_smoothing"]))
     parser.add_argument("--adaface-m", type=float, default=0.4)
     parser.add_argument("--adaface-h", type=float, default=0.333)
     parser.add_argument("--adaface-s", type=float, default=64.0)
     parser.add_argument("--adaface-t-alpha", type=float, default=0.01)
+    parser.add_argument("--arcface-margin", type=float, default=0.5)
+    parser.add_argument("--arcface-scale", type=float, default=64.0)
+    parser.add_argument("--arcface-subcenters", type=int, default=None,
+                        help="Defaults to 1 for arcface and 2 for subcenter_arcface")
     parser.add_argument("--skip-test-evaluation", action="store_true",
                         help="Stop after validation-based checkpointing during screening")
     parser.add_argument("--train_sampler", choices=["random", "pk"], default="random")
@@ -332,7 +340,10 @@ def main():
     parser.add_argument("--resume_training_state", type=str, default="")
     args = parser.parse_args()
 
-    use_auxiliary = args.auxiliary and not args.no_auxiliary and args.loss_mode != "adaface"
+    margin_modes = {"adaface", "arcface", "subcenter_arcface"}
+    use_auxiliary = args.auxiliary and not args.no_auxiliary and args.loss_mode not in margin_modes
+    if args.loss_mode in margin_modes and args.label_smoothing != 0.0:
+        parser.error("Margin-head runs require --label-smoothing 0.0")
 
     # Parse reduction indices ("2,5" -> [2, 5]); None keeps the default positions.
     reduction_indices = None
@@ -416,6 +427,22 @@ def main():
             f"  Classification head: AdaFace m={args.adaface_m} h={args.adaface_h} "
             f"s={args.adaface_s} t_alpha={args.adaface_t_alpha}"
         )
+    elif args.loss_mode in {"arcface", "subcenter_arcface"}:
+        default_k = 2 if args.loss_mode == "subcenter_arcface" else 1
+        subcenters = args.arcface_subcenters or default_k
+        if args.loss_mode == "arcface" and subcenters != 1:
+            parser.error("arcface control requires exactly one center per class")
+        if args.loss_mode == "subcenter_arcface" and subcenters != 2:
+            parser.error("the bounded screening protocol fixes subcenter_arcface to K=2")
+        replace_linear_with_arcface(
+            model, num_classes=num_classes, m=args.arcface_margin,
+            s=args.arcface_scale, num_subcenters=subcenters,
+        )
+        model.to(device)
+        logger.info(
+            f"  Classification head: ArcFace m={args.arcface_margin} "
+            f"s={args.arcface_scale} K={subcenters}"
+        )
 
     total_params = count_parameters(model)
     if not args.resume_training_state:
@@ -437,8 +464,7 @@ def main():
                      f"{RETRAIN_CFG['target_params_max']:,}]")
 
     # Optimizer & scheduler
-    criterion = nn.CrossEntropyLoss(
-        label_smoothing=RETRAIN_CFG["label_smoothing"]).to(device)
+    criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing).to(device)
 
     optimizer = AdamW(
         model.parameters(),
@@ -476,6 +502,12 @@ def main():
         "adaface_h": args.adaface_h,
         "adaface_s": args.adaface_s,
         "adaface_t_alpha": args.adaface_t_alpha,
+        "effective_label_smoothing": args.label_smoothing,
+        "arcface_margin": args.arcface_margin,
+        "arcface_scale": args.arcface_scale,
+        "arcface_subcenters": (
+            args.arcface_subcenters or (2 if args.loss_mode == "subcenter_arcface" else 1)
+        ),
     }
 
     with open(save_dir / "config.json", "w") as f:
@@ -688,6 +720,16 @@ def main():
                 s=args.adaface_s, t_alpha=args.adaface_t_alpha,
             )
             eval_model.to(device)
+        elif args.loss_mode in {"arcface", "subcenter_arcface"}:
+            replace_linear_with_arcface(
+                eval_model, num_classes=num_classes, m=args.arcface_margin,
+                s=args.arcface_scale,
+                num_subcenters=(
+                    args.arcface_subcenters
+                    or (2 if args.loss_mode == "subcenter_arcface" else 1)
+                ),
+            )
+            eval_model.to(device)
         state_dict = torch.load(weights_path, map_location="cpu")
         eval_model.load_state_dict(state_dict)
         eval_model.to(device)
@@ -703,8 +745,14 @@ def main():
             "best_validation_accuracy_epoch": best_acc_epoch,
             "best_checkpoint_true_class_margin": float(best_checkpoint_margin),
             "maximum_validation_true_class_margin": float(maximum_val_margin),
-            "checkpoint_selection": "minimum_validation_loss",
-            "best_checkpoint": str(save_dir / "best_model.pth"),
+            "checkpoint_selection": "lexicographic_validation_errors_loss_margin",
+            "best_checkpoint": str(save_dir / "best_screening.pth"),
+            "best_screening_epoch": best_screening_epoch,
+            "best_screening_key": {
+                "validation_errors": int(best_screening[0]),
+                "validation_ce_loss": float(best_screening[1]),
+                "negative_true_class_margin": float(best_screening[2]),
+            },
             "loss_mode": args.loss_mode,
         }
         with open(save_dir / "screening_results.json", "w") as f:

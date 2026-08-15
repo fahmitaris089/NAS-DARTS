@@ -24,16 +24,26 @@ import torch
 import torch.nn as nn
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = PROJECT_ROOT.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "nas"))
 
 from genotypes import dict_to_genotype
 from model_eval import EvalNetwork
+from adaface import replace_linear_with_adaface, replace_linear_with_arcface
 from operations import fuse_reparam_model
 
 
 def load_json(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def resolve_project_path(value: str | Path) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    candidates = [Path.cwd() / path, REPOSITORY_ROOT / path, PROJECT_ROOT / path]
+    return next((candidate for candidate in candidates if candidate.exists()), REPOSITORY_ROOT / path)
 
 
 def parse_reduction_indices(raw_value) -> list[int] | None:
@@ -73,15 +83,37 @@ def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwor
         reduction_indices = reduction_indices,
     )
 
-    state_dict = torch.load(model_path, map_location="cpu")
+    loss_mode = student_cfg.get("loss_mode", "ce")
+    if loss_mode in {"arcface", "subcenter_arcface"}:
+        replace_linear_with_arcface(
+            model, num_classes=num_classes,
+            m=float(student_cfg.get("arcface_margin", 0.5)),
+            s=float(student_cfg.get("arcface_scale", 64.0)),
+            num_subcenters=int(student_cfg.get(
+                "arcface_subcenters", 2 if loss_mode == "subcenter_arcface" else 1
+            )),
+        )
+    elif loss_mode == "adaface" or kd_cfg.get("adaface"):
+        replace_linear_with_adaface(
+            model, num_classes=num_classes,
+            m=float(student_cfg.get("adaface_m", kd_cfg.get("adaface_m", 0.4))),
+            h=float(student_cfg.get("adaface_h", kd_cfg.get("adaface_h", 0.333))),
+            s=float(student_cfg.get("adaface_s", kd_cfg.get("adaface_s", 64.0))),
+            t_alpha=float(student_cfg.get("adaface_t_alpha", kd_cfg.get("adaface_t_alpha", 0.01))),
+        )
+
+    state_dict = torch.load(model_path, map_location="cpu", weights_only=False)
+    if isinstance(state_dict, dict) and "student" in state_dict:
+        state_dict = state_dict["student"]
     # Skip auxiliary head keys jika ada (backward compat)
     state_dict = {k: v for k, v in state_dict.items()
                   if not k.startswith("_auxiliary_head")}
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
-    if missing:
-        print(f"  [warn] Missing keys  : {missing[:3]}{'...' if len(missing)>3 else ''}")
-    if unexpected:
-        print(f"  [warn] Unexpected keys: {unexpected[:3]}{'...' if len(unexpected)>3 else ''}")
+    material_missing = [key for key in missing if not key.startswith("_auxiliary_head")]
+    if material_missing or unexpected:
+        raise RuntimeError(
+            f"Checkpoint/model mismatch; missing={material_missing[:10]} unexpected={unexpected[:10]}"
+        )
 
     model.eval()
     _, n_fused = fuse_reparam_model(model)
@@ -123,6 +155,7 @@ def write_metadata(
     size_mb: float,
     input_size: int,
     opset: int,
+    model_path: Path,
 ) -> Path:
     c_init    = int(student_cfg.get("C_init",    kd_cfg.get("student_C_init", 4)))
     num_cells = int(student_cfg.get("num_cells", kd_cfg.get("student_num_cells", 8)))
@@ -131,7 +164,7 @@ def write_metadata(
     metadata = {
         "exported_at"  : datetime.now().isoformat(),
         "model_dir"    : str(model_dir),
-        "model_path"   : str(model_dir / "best_model.pth"),
+        "model_path"   : str(model_path),
         "onnx_path"    : str(onnx_path),
         "input_size"   : input_size,
         "opset"        : opset,
@@ -166,6 +199,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--opset",      type=int, default=13)
     parser.add_argument("--output",     type=Path, default=None,
                         help="Path output ONNX. Default: <model-dir>/model_benchmark.onnx")
+    parser.add_argument("--weights", type=Path, default=Path("best_screening.pth"),
+                        help="Checkpoint inside model-dir, or an absolute checkpoint path")
     return parser.parse_args()
 
 
@@ -173,7 +208,7 @@ def main() -> None:
     args = parse_args()
     model_dir  = args.model_dir.resolve()
     kd_config_path = model_dir / "config.json"
-    model_path     = model_dir / "best_model.pth"
+    model_path = args.weights if args.weights.is_absolute() else model_dir / args.weights
     onnx_path      = args.output or (model_dir / "model_benchmark.onnx")
 
     if not kd_config_path.exists():
@@ -194,7 +229,7 @@ def main() -> None:
     #   1. KD dir  → config.json punya "student_config_path" menunjuk ke retrain config.
     #   2. Retrain dir → config.json sudah memuat "genotype" langsung (self-contained).
     if "student_config_path" in kd_cfg:
-        student_config_path = PROJECT_ROOT / kd_cfg["student_config_path"]
+        student_config_path = resolve_project_path(kd_cfg["student_config_path"])
         if not student_config_path.exists():
             raise FileNotFoundError(
                 f"Student config not found: {student_config_path}\n"
@@ -219,7 +254,8 @@ def main() -> None:
     size_mb = export_onnx(model, onnx_path, args.input_size, args.opset)
 
     meta_path = write_metadata(
-        model_dir, kd_cfg, student_cfg, onnx_path, size_mb, args.input_size, args.opset
+        model_dir, kd_cfg, student_cfg, onnx_path, size_mb, args.input_size, args.opset,
+        model_path,
     )
 
     print(f"\n  ✓ ONNX exported : {onnx_path}")

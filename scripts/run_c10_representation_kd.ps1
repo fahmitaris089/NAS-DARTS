@@ -2,10 +2,14 @@ param(
   [Parameter(Mandatory=$true)]
   [ValidateSet("audit","pk_ce","center","hybrid_scratch","hybrid_early")]
   [string]$Mode,
-  [switch]$Smoke
+  [switch]$Smoke,
+  [switch]$AllowLegacy
 )
 
 $ErrorActionPreference = "Stop"
+if (-not $AllowLegacy) {
+  throw "This is the legacy unbounded E1-E4 runner. Use scripts/run_c10_targeted_screening.ps1. Pass -AllowLegacy only to reproduce an already registered historical run."
+}
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Root
 $Config = "nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/config.json"

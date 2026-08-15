@@ -101,6 +101,13 @@ class KDConfig:
     relation_topk: int = 8
     relation_difference_threshold: float = 0.02
     adaptive_warmup_epochs: int = 20
+    progressive_staging: bool = False
+    progressive_center_start: int = 101
+    progressive_relation_start: int = 201
+    progressive_calibration_batches: int = 10
+    progressive_center_grad_ratio: float = 0.10
+    progressive_feature_grad_ratio: float = 0.05
+    progressive_relation_grad_ratio: float = 0.05
     logit_kd_weight: float = 0.0
     topk_k: int = 5
     topk_weight: float = 0.05

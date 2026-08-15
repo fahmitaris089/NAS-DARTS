@@ -123,6 +123,35 @@ class PKAdaptiveTests(unittest.TestCase):
     self.assertEqual(positives, 0)
     self.assertEqual(negatives, 0)
 
+  def test_progressive_stages_and_gradient_ratio_calibration(self):
+    torch.manual_seed(19)
+    centers = torch.nn.functional.normalize(torch.randn(6, 7), dim=1)
+    criterion = AdaptiveCenterRelationLoss(
+        student_dim=5, teacher_dim=7, num_classes=6, initial_centers=centers,
+        progressive_staging=True, center_start_epoch=2, relation_start_epoch=3,
+        calibration_batches=1, warmup_epochs=1, relation_weight=0.05,
+    )
+    labels = torch.tensor([0, 0, 1, 1, 2, 2])
+    classifier = torch.randn(5, 6)
+    def run(epoch):
+        student = torch.randn(6, 5, requires_grad=True)
+        logits = student @ classifier
+        teacher = torch.randn(6, 7)
+        return criterion(logits, student, teacher, labels, epoch=epoch, batch_index=0)
+    _, stage1 = run(1)
+    self.assertEqual(stage1["adaptive_stage"], 1)
+    self.assertEqual(stage1["loss_kd"], 0.0)
+    loss2, stage2 = run(2)
+    self.assertEqual(stage2["adaptive_stage"], 2)
+    self.assertGreater(stage2["center_weight_effective"], 0.0)
+    loss2.backward()
+    loss3, stage3 = run(3)
+    self.assertEqual(stage3["adaptive_stage"], 3)
+    self.assertGreater(stage3["relation_weight_effective"], 0.0)
+    loss3.backward()
+    self.assertTrue(bool(criterion.center_feature_calibrated))
+    self.assertTrue(bool(criterion.relation_calibrated))
+
 
 if __name__ == "__main__":
     unittest.main()

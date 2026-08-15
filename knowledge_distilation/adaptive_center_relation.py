@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import statistics
 from pathlib import Path
 
 import torch
@@ -50,6 +51,13 @@ class AdaptiveCenterRelationLoss(nn.Module):
         difference_threshold: float = 0.02,
         warmup_epochs: int = 20,
         label_smoothing: float = 0.2,
+        progressive_staging: bool = False,
+        center_start_epoch: int = 101,
+        relation_start_epoch: int = 201,
+        calibration_batches: int = 10,
+        center_grad_ratio: float = 0.10,
+        feature_grad_ratio: float = 0.05,
+        relation_grad_ratio: float = 0.05,
     ):
         super().__init__()
         if initial_centers.shape != (num_classes, teacher_dim):
@@ -70,6 +78,23 @@ class AdaptiveCenterRelationLoss(nn.Module):
         self.difference_threshold = float(difference_threshold)
         self.warmup_epochs = int(warmup_epochs)
         self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+        self.progressive_staging = bool(progressive_staging)
+        self.center_start_epoch = int(center_start_epoch)
+        self.relation_start_epoch = int(relation_start_epoch)
+        self.calibration_batches = int(calibration_batches)
+        self.center_grad_ratio = float(center_grad_ratio)
+        self.feature_grad_ratio = float(feature_grad_ratio)
+        self.relation_grad_ratio = float(relation_grad_ratio)
+        self.register_buffer("calibrated_center_weight", torch.tensor(float(center_weight)))
+        self.register_buffer("calibrated_feature_weight", torch.tensor(float(feature_weight)))
+        self.register_buffer("calibrated_relation_weight", torch.tensor(float(relation_weight)))
+        self.register_buffer("center_feature_calibrated", torch.tensor(not progressive_staging))
+        self.register_buffer(
+            "relation_calibrated", torch.tensor((not progressive_staging) or relation_weight == 0)
+        )
+        self._center_candidates: list[float] = []
+        self._feature_candidates: list[float] = []
+        self._relation_candidates: list[float] = []
 
     @staticmethod
     def _zero(reference: torch.Tensor) -> torch.Tensor:
@@ -128,11 +153,123 @@ class AdaptiveCenterRelationLoss(nn.Module):
             self.centers[label] = F.normalize(candidates[mask].mean(0), dim=0)
         return targets
 
+    @staticmethod
+    def _gradient_norm(loss: torch.Tensor, embeddings: torch.Tensor) -> float:
+        gradient = torch.autograd.grad(
+            loss, embeddings, retain_graph=True, create_graph=False, allow_unused=True
+        )[0]
+        return 0.0 if gradient is None else float(gradient.detach().float().norm())
+
+    @staticmethod
+    def _candidate_weight(target_ratio: float, ce_norm: float, component_norm: float) -> float:
+        if component_norm <= 1e-12 or ce_norm <= 1e-12:
+            return 0.0
+        return max(1e-6, min(10.0, target_ratio * ce_norm / component_norm))
+
+    def _progressive_weights(
+        self,
+        *,
+        epoch: int,
+        batch_index: int,
+        loss_ce: torch.Tensor,
+        loss_center: torch.Tensor,
+        loss_feature: torch.Tensor,
+        loss_relation: torch.Tensor,
+        student_embeddings: torch.Tensor,
+    ) -> tuple[float, float, float, dict]:
+        diagnostics = {
+            "grad_norm_ce": 0.0,
+            "grad_norm_center": 0.0,
+            "grad_norm_feature": 0.0,
+            "grad_norm_relation": 0.0,
+        }
+        if not self.progressive_staging:
+            ramp = 1.0 if self.warmup_epochs == 0 else min(epoch / self.warmup_epochs, 1.0)
+            return (
+                ramp * self.center_weight,
+                ramp * self.feature_weight,
+                ramp * self.relation_weight,
+                diagnostics,
+            )
+
+        if epoch < self.center_start_epoch:
+            return 0.0, 0.0, 0.0, diagnostics
+
+        calibrating_center = (
+            not bool(self.center_feature_calibrated.item())
+            and epoch == self.center_start_epoch
+            and batch_index < self.calibration_batches
+        )
+        calibrating_relation = (
+            self.relation_weight > 0
+            and not bool(self.relation_calibrated.item())
+            and epoch == self.relation_start_epoch
+            and batch_index < self.calibration_batches
+        )
+        if calibrating_center or calibrating_relation:
+            diagnostics["grad_norm_ce"] = self._gradient_norm(loss_ce, student_embeddings)
+        if calibrating_center:
+            diagnostics["grad_norm_center"] = self._gradient_norm(loss_center, student_embeddings)
+            diagnostics["grad_norm_feature"] = self._gradient_norm(loss_feature, student_embeddings)
+            self._center_candidates.append(self._candidate_weight(
+                self.center_grad_ratio, diagnostics["grad_norm_ce"], diagnostics["grad_norm_center"]
+            ))
+            self._feature_candidates.append(self._candidate_weight(
+                self.feature_grad_ratio, diagnostics["grad_norm_ce"], diagnostics["grad_norm_feature"]
+            ))
+            if len(self._center_candidates) >= self.calibration_batches:
+                self.calibrated_center_weight.fill_(statistics.median(self._center_candidates))
+                self.calibrated_feature_weight.fill_(statistics.median(self._feature_candidates))
+                self.center_feature_calibrated.fill_(True)
+        if calibrating_relation:
+            diagnostics["grad_norm_relation"] = self._gradient_norm(loss_relation, student_embeddings)
+            self._relation_candidates.append(self._candidate_weight(
+                self.relation_grad_ratio, diagnostics["grad_norm_ce"], diagnostics["grad_norm_relation"]
+            ))
+            if len(self._relation_candidates) >= self.calibration_batches:
+                self.calibrated_relation_weight.fill_(statistics.median(self._relation_candidates))
+                self.relation_calibrated.fill_(True)
+
+        center_ramp = min(
+            max(epoch - self.center_start_epoch + 1, 0) / max(self.warmup_epochs, 1), 1.0
+        )
+        relation_ramp = min(
+            max(epoch - self.relation_start_epoch + 1, 0) / max(self.warmup_epochs, 1), 1.0
+        )
+        center_weight = (
+            float(self.calibrated_center_weight) * center_ramp
+            if bool(self.center_feature_calibrated.item()) else 0.0
+        )
+        feature_weight = (
+            float(self.calibrated_feature_weight) * center_ramp
+            if bool(self.center_feature_calibrated.item()) else 0.0
+        )
+        relation_weight = (
+            float(self.calibrated_relation_weight) * relation_ramp
+            if bool(self.relation_calibrated.item()) and epoch >= self.relation_start_epoch else 0.0
+        )
+        return center_weight, feature_weight, relation_weight, diagnostics
+
     def forward(self, logits_student: torch.Tensor, student_embeddings: torch.Tensor,
-                teacher_embeddings: torch.Tensor, targets: torch.Tensor,
-                *, epoch: int = 1) -> tuple[torch.Tensor, dict]:
+                teacher_embeddings: torch.Tensor | None, targets: torch.Tensor,
+                *, epoch: int = 1, batch_index: int = 0) -> tuple[torch.Tensor, dict]:
         if targets.ndim != 1 or targets.numel() != logits_student.shape[0]:
             raise ValueError("targets must be [B] and aligned with logits")
+        loss_ce = self.ce(logits_student, targets)
+        if self.progressive_staging and epoch < self.center_start_epoch:
+            return loss_ce, {
+                "loss_total": float(loss_ce.detach()), "loss_ce": float(loss_ce.detach()),
+                "loss_kd": 0.0, "loss_center": 0.0, "loss_embedding": 0.0,
+                "loss_relation": 0.0, "weighted_center": 0.0,
+                "weighted_feature": 0.0, "weighted_relation": 0.0,
+                "center_weight_effective": 0.0, "feature_weight_effective": 0.0,
+                "relation_weight_effective": 0.0, "adaptive_stage": 1,
+                "positive_pairs": 0, "mined_negative_pairs": 0,
+                "grad_norm_ce": 0.0, "grad_norm_center": 0.0,
+                "grad_norm_feature": 0.0, "grad_norm_relation": 0.0,
+            }
+        if teacher_embeddings is None:
+            raise ValueError("teacher embeddings are required after the CE-only stage")
         teacher = F.normalize(teacher_embeddings.detach(), dim=1)
         projected = F.normalize(self.adapter(student_embeddings), dim=1)
         adaptive_targets = self._adaptive_targets_and_update(projected.detach(), teacher, targets)
@@ -143,27 +280,42 @@ class AdaptiveCenterRelationLoss(nn.Module):
         center_logits.scatter_(1, targets[:, None], (target_cosine - self.margin)[:, None])
         loss_center = F.cross_entropy(self.scale * center_logits, targets)
         loss_feature = (1.0 - (projected * teacher).sum(1)).mean()
-        loss_relation, positive_count, negative_count = self._relation_loss(
-            projected, teacher, targets
+        if (not self.progressive_staging) or epoch >= self.relation_start_epoch:
+            loss_relation, positive_count, negative_count = self._relation_loss(
+                projected, teacher, targets
+            )
+        else:
+            loss_relation, positive_count, negative_count = self._zero(projected), 0, 0
+        center_w, feature_w, relation_w, diagnostics = self._progressive_weights(
+            epoch=epoch, batch_index=batch_index, loss_ce=loss_ce,
+            loss_center=loss_center, loss_feature=loss_feature,
+            loss_relation=loss_relation, student_embeddings=student_embeddings,
         )
-        loss_ce = self.ce(logits_student, targets)
-        ramp = 1.0 if self.warmup_epochs == 0 else min(float(epoch) / self.warmup_epochs, 1.0)
-        auxiliary = (
-            self.center_weight * loss_center
-            + self.feature_weight * loss_feature
-            + self.relation_weight * loss_relation
-        )
-        total = loss_ce + ramp * auxiliary
+        weighted_center = center_w * loss_center
+        weighted_feature = feature_w * loss_feature
+        weighted_relation = relation_w * loss_relation
+        auxiliary = weighted_center + weighted_feature + weighted_relation
+        total = loss_ce + auxiliary
         return total, {
             "loss_total": float(total.detach()),
             "loss_ce": float(loss_ce.detach()),
-            "loss_kd": float((ramp * auxiliary).detach()),
+            "loss_kd": float(auxiliary.detach()),
             "loss_center": float(loss_center.detach()),
             "loss_embedding": float(loss_feature.detach()),
             "loss_relation": float(loss_relation.detach()),
-            "adaptive_ramp": ramp,
+            "weighted_center": float(weighted_center.detach()),
+            "weighted_feature": float(weighted_feature.detach()),
+            "weighted_relation": float(weighted_relation.detach()),
+            "center_weight_effective": center_w,
+            "feature_weight_effective": feature_w,
+            "relation_weight_effective": relation_w,
+            "adaptive_stage": (
+                1 if epoch < self.center_start_epoch else
+                2 if epoch < self.relation_start_epoch else 3
+            ) if self.progressive_staging else 0,
             "positive_pairs": positive_count,
             "mined_negative_pairs": negative_count,
+            **diagnostics,
         }
 
 
