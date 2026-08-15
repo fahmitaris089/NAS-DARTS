@@ -522,12 +522,16 @@ def main():
 
     # Training log
     log_path = save_dir / "training_log.csv"
-    log_file = open(log_path, "w", newline="", encoding="utf-8")
+    append_log = bool(args.resume_training_state) and log_path.exists()
+    log_file = open(
+        log_path, "a" if append_log else "w", newline="", encoding="utf-8"
+    )
     log_writer = csv.writer(log_file)
-    log_writer.writerow([
-        "epoch", "train_loss", "train_acc", "val_loss", "val_acc",
-        "val_true_class_margin", "lr", "drop_path", "epoch_time_sec",
-    ])
+    if not append_log:
+        log_writer.writerow([
+            "epoch", "train_loss", "train_acc", "val_loss", "val_acc",
+            "val_true_class_margin", "lr", "drop_path", "epoch_time_sec",
+        ])
 
     # ─── Training Loop ───────────────────────────────────────────────────
     best_val_loss = float("inf")
