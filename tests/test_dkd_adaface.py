@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from adaface import AdaFaceHead, ArcFaceHead
@@ -109,6 +110,37 @@ class ArcFaceTests(unittest.TestCase):
             head.weight.copy_(torch.tensor([[1., 0.], [0., 1.], [-1., 0.], [0., -1.]]))
         logits = head(torch.tensor([[0., 2.]]))
         self.assertGreater(float(logits[0, 0]), float(logits[0, 1]))
+
+    def test_margin_warmup(self):
+        head = ArcFaceHead(4, 3, margin_warmup_epochs=20)
+        head.set_epoch(1)
+        self.assertAlmostEqual(head.effective_margin, 0.025)
+        head.set_epoch(20)
+        self.assertAlmostEqual(head.effective_margin, 0.5)
+
+    def test_linear_and_subcenter_initialization(self):
+        from adaface import replace_linear_with_arcface
+        first = nn.Module()
+        first.classifier = nn.Linear(4, 3)
+        original = first.classifier.weight.detach().clone()
+        head = replace_linear_with_arcface(first, num_classes=3)
+        self.assertTrue(torch.equal(head.weight.detach(), original))
+
+        def build_subcenter():
+            model = nn.Module()
+            model.classifier = nn.Linear(4, 3)
+            with torch.no_grad():
+                model.classifier.weight.copy_(original)
+            return replace_linear_with_arcface(
+                model, num_classes=3, num_subcenters=2,
+                subcenter_init_epsilon=1e-3,
+            )
+
+        first_head = build_subcenter()
+        second_head = build_subcenter()
+        self.assertTrue(torch.equal(first_head.weight, second_head.weight))
+        paired = first_head.weight.view(3, 2, 4)
+        self.assertFalse(torch.equal(paired[:, 0], paired[:, 1]))
 
 
 if __name__ == "__main__":

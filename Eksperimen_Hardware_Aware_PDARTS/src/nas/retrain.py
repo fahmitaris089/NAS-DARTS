@@ -327,6 +327,8 @@ def main():
     parser.add_argument("--adaface-t-alpha", type=float, default=0.01)
     parser.add_argument("--arcface-margin", type=float, default=0.5)
     parser.add_argument("--arcface-scale", type=float, default=64.0)
+    parser.add_argument("--arcface-margin-warmup-epochs", type=int, default=0)
+    parser.add_argument("--subcenter-init-epsilon", type=float, default=1e-3)
     parser.add_argument("--arcface-subcenters", type=int, default=None,
                         help="Defaults to 1 for arcface and 2 for subcenter_arcface")
     parser.add_argument("--skip-test-evaluation", action="store_true",
@@ -437,11 +439,14 @@ def main():
         replace_linear_with_arcface(
             model, num_classes=num_classes, m=args.arcface_margin,
             s=args.arcface_scale, num_subcenters=subcenters,
+            margin_warmup_epochs=args.arcface_margin_warmup_epochs,
+            subcenter_init_epsilon=args.subcenter_init_epsilon,
         )
         model.to(device)
         logger.info(
             f"  Classification head: ArcFace m={args.arcface_margin} "
-            f"s={args.arcface_scale} K={subcenters}"
+            f"s={args.arcface_scale} K={subcenters} "
+            f"margin_warmup={args.arcface_margin_warmup_epochs}e init=CE-head"
         )
 
     total_params = count_parameters(model)
@@ -505,6 +510,8 @@ def main():
         "effective_label_smoothing": args.label_smoothing,
         "arcface_margin": args.arcface_margin,
         "arcface_scale": args.arcface_scale,
+        "arcface_margin_warmup_epochs": args.arcface_margin_warmup_epochs,
+        "subcenter_init_epsilon": args.subcenter_init_epsilon,
         "arcface_subcenters": (
             args.arcface_subcenters or (2 if args.loss_mode == "subcenter_arcface" else 1)
         ),
@@ -617,6 +624,8 @@ def main():
         # Schedule drop path probability
         drop_path = args.drop_path_prob * epoch / args.epochs
         model.set_drop_path_prob(drop_path)
+        if args.loss_mode in {"arcface", "subcenter_arcface"}:
+            model.classifier.set_epoch(epoch)
         batch_sampler = getattr(train_loader, "batch_sampler", None)
         if hasattr(batch_sampler, "set_epoch"):
             batch_sampler.set_epoch(epoch - 1)
@@ -728,6 +737,8 @@ def main():
                     args.arcface_subcenters
                     or (2 if args.loss_mode == "subcenter_arcface" else 1)
                 ),
+                margin_warmup_epochs=args.arcface_margin_warmup_epochs,
+                subcenter_init_epsilon=args.subcenter_init_epsilon,
             )
             eval_model.to(device)
         state_dict = torch.load(weights_path, map_location="cpu")

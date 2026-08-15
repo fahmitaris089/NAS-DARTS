@@ -5,6 +5,7 @@ Inference returns scaled cosine logits and therefore needs no labels.
 """
 from __future__ import annotations
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -90,7 +91,8 @@ class ArcFaceHead(nn.Module):
     """
 
     def __init__(self, embedding_size: int, classnum: int, *, m: float = 0.5,
-                 s: float = 64.0, num_subcenters: int = 1) -> None:
+                 s: float = 64.0, num_subcenters: int = 1,
+                 margin_warmup_epochs: int = 0) -> None:
         super().__init__()
         if num_subcenters < 1:
             raise ValueError("num_subcenters must be positive")
@@ -99,10 +101,21 @@ class ArcFaceHead(nn.Module):
         self.m = float(m)
         self.s = float(s)
         self.num_subcenters = int(num_subcenters)
+        self.margin_warmup_epochs = max(0, int(margin_warmup_epochs))
+        self._training_epoch = 0
         self.weight = nn.Parameter(torch.empty(
             self.classnum * self.num_subcenters, self.embedding_size
         ))
         nn.init.xavier_uniform_(self.weight)
+
+    def set_epoch(self, epoch: int) -> None:
+        self._training_epoch = max(0, int(epoch))
+
+    @property
+    def effective_margin(self) -> float:
+        if self.margin_warmup_epochs <= 0:
+            return self.m
+        return self.m * min(1.0, self._training_epoch / self.margin_warmup_epochs)
 
     def cosine_logits(self, embeddings: torch.Tensor) -> torch.Tensor:
         embeddings = F.normalize(embeddings, p=2, dim=1, eps=1e-12)
@@ -118,8 +131,12 @@ class ArcFaceHead(nn.Module):
         if labels is None:
             return cosine * self.s
         target = cosine.gather(1, labels.view(-1, 1))
+        margin = self.effective_margin
         theta = torch.acos(target.clamp(-1.0 + 1e-4, 1.0 - 1e-4))
-        target_margin = torch.cos(theta + self.m)
+        phi = torch.cos(theta + margin)
+        threshold = math.cos(math.pi - margin)
+        correction = math.sin(math.pi - margin) * margin
+        target_margin = torch.where(target > threshold, phi, target - correction)
         output = cosine.clone()
         output.scatter_(1, labels.view(-1, 1), target_margin)
         return output * self.s
@@ -128,13 +145,32 @@ class ArcFaceHead(nn.Module):
 def replace_linear_with_arcface(
     model: nn.Module, *, num_classes: int, m: float = 0.5,
     s: float = 64.0, num_subcenters: int = 1,
+    margin_warmup_epochs: int = 0, subcenter_init_epsilon: float = 1e-3,
 ) -> ArcFaceHead:
     classifier = getattr(model, "classifier", None)
     if not isinstance(classifier, nn.Linear):
         raise TypeError("ArcFace replacement requires model.classifier to be nn.Linear")
+    if classifier.out_features != num_classes:
+        raise ValueError("Existing classifier class count does not match num_classes")
     head = ArcFaceHead(
         classifier.in_features, num_classes, m=m, s=s,
-        num_subcenters=num_subcenters,
+        num_subcenters=num_subcenters, margin_warmup_epochs=margin_warmup_epochs,
     )
+    with torch.no_grad():
+        base = classifier.weight.detach().clone()
+        if num_subcenters == 1:
+            head.weight.copy_(base)
+        else:
+            if subcenter_init_epsilon <= 0:
+                raise ValueError("subcenter_init_epsilon must be positive for K>1")
+            pattern = torch.arange(base.numel(), device=base.device, dtype=base.dtype).reshape_as(base)
+            perturbation = F.normalize(torch.sin(pattern + 1.0), p=2, dim=1, eps=1e-12)
+            centers = []
+            for class_index in range(num_classes):
+                for center_index in range(num_subcenters):
+                    sign = -1.0 if center_index % 2 == 0 else 1.0
+                    magnitude = 1.0 + center_index // 2
+                    centers.append(base[class_index] + sign * magnitude * subcenter_init_epsilon * perturbation[class_index])
+            head.weight.copy_(torch.stack(centers))
     model.classifier = head
     return head

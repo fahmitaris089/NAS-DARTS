@@ -30,6 +30,28 @@ def main():
     output = Path(args.output)
     config_path = Path(args.config)
     config_hash = hashlib.sha256(config_path.read_bytes()).hexdigest()
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    reduction = cfg.get("reduction_indices")
+    if isinstance(reduction, str):
+        reduction = [int(x) for x in reduction.split(",") if x.strip()]
+    c_init = args.C_init or int(cfg["C_init"])
+    num_cells = args.num_cells or int(cfg["num_cells"])
+    stem_downsample = args.stem_downsample or int(cfg.get("stem_downsample", 8))
+    architecture = {
+        "genotype": cfg["genotype"], "C_init": c_init, "num_cells": num_cells,
+        "stem_downsample": stem_downsample, "reduction_indices": reduction,
+        "num_classes": 834,
+    }
+    architecture_hash = hashlib.sha256(
+        json.dumps(architecture, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
+    model = EvalNetwork(
+        genotype=dict_to_genotype(cfg["genotype"]), C_init=c_init,
+        num_cells=num_cells, num_classes=834, auxiliary=False,
+        dropout=float(cfg.get("retrain_cfg", {}).get("dropout", 0.3)),
+        stem_downsample=stem_downsample, reduction_indices=reduction,
+    )
     manifest_path = output.with_suffix(output.suffix + ".manifest.json")
     if output.exists() and not args.overwrite:
         if not manifest_path.exists():
@@ -38,33 +60,42 @@ def main():
                 "Use --overwrite only after confirming it may be replaced."
             )
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        expected = {
-            "config_sha256": config_hash, "seed": args.seed,
-            "C_init": args.C_init or manifest.get("C_init"),
-            "num_cells": args.num_cells or manifest.get("num_cells"),
-            "stem_downsample": args.stem_downsample or manifest.get("stem_downsample"),
+        expected_semantics = {
+            "seed": args.seed, "C_init": c_init, "num_cells": num_cells,
+            "stem_downsample": stem_downsample, "reduction_indices": reduction,
+            "num_classes": 834,
         }
-        if any(manifest.get(key) != value for key, value in expected.items()):
-            raise ValueError(f"Existing initial state provenance mismatch: {manifest} vs {expected}")
+        semantic_mismatch = {
+            key: (manifest.get(key), value) for key, value in expected_semantics.items()
+            if manifest.get(key) != value
+        }
+        if semantic_mismatch:
+            raise ValueError(f"Existing initial-state architecture mismatch: {semantic_mismatch}")
         state_hash = hashlib.sha256(output.read_bytes()).hexdigest()
         if manifest.get("state_sha256") != state_hash:
             raise ValueError("Existing initial state hash differs from its manifest")
-        print(json.dumps({"output": str(output), "sha256": state_hash, "status": "reused"}, indent=2))
+        state = torch.load(output, map_location="cpu", weights_only=False)
+        if isinstance(state, dict) and "student" in state:
+            state = state["student"]
+        try:
+            model.load_state_dict(state, strict=True)
+        except RuntimeError as error:
+            raise ValueError(
+                "Existing initial state is not strictly compatible with the requested architecture"
+            ) from error
+        status = "reused" if manifest.get("config_sha256") == config_hash else "reused_semantic_match"
+        compatible_hashes = set(manifest.get("compatible_config_sha256", []))
+        compatible_hashes.update(filter(None, [manifest.get("config_sha256"), config_hash]))
+        manifest["compatible_config_sha256"] = sorted(compatible_hashes)
+        manifest["architecture_sha256"] = architecture_hash
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        print(json.dumps({
+            "output": str(output), "sha256": state_hash, "status": status,
+            "original_config_sha256": manifest.get("config_sha256"),
+            "current_config_sha256": config_hash,
+            "strict_state_dict_compatible": True,
+        }, indent=2))
         return
-    cfg = json.loads(config_path.read_text(encoding="utf-8"))
-    random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
-    reduction = cfg.get("reduction_indices")
-    if isinstance(reduction, str):
-        reduction = [int(x) for x in reduction.split(",") if x.strip()]
-    c_init = args.C_init or int(cfg["C_init"])
-    num_cells = args.num_cells or int(cfg["num_cells"])
-    stem_downsample = args.stem_downsample or int(cfg.get("stem_downsample", 8))
-    model = EvalNetwork(
-        genotype=dict_to_genotype(cfg["genotype"]), C_init=c_init,
-        num_cells=num_cells, num_classes=834, auxiliary=False,
-        dropout=float(cfg.get("retrain_cfg", {}).get("dropout", 0.3)),
-        stem_downsample=stem_downsample, reduction_indices=reduction,
-    )
     output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), output)
     state_hash = hashlib.sha256(output.read_bytes()).hexdigest()
@@ -74,6 +105,8 @@ def main():
         "C_init": c_init, "num_cells": num_cells,
         "stem_downsample": stem_downsample,
         "reduction_indices": reduction, "num_classes": 834,
+        "architecture_sha256": architecture_hash,
+        "compatible_config_sha256": [config_hash],
     }
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps({"output": str(output), "sha256": state_hash, "seed": args.seed}, indent=2))

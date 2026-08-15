@@ -1,6 +1,7 @@
 """AdaFace head shared by NAS retraining, distillation, and export."""
 from __future__ import annotations
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -50,16 +51,28 @@ class ArcFaceHead(nn.Module):
     """ArcFace classifier with optional K sub-centers per identity."""
 
     def __init__(self, embedding_size: int, classnum: int, *, m: float = 0.5,
-                 s: float = 64.0, num_subcenters: int = 1):
+                 s: float = 64.0, num_subcenters: int = 1,
+                 margin_warmup_epochs: int = 0):
         super().__init__()
         if num_subcenters < 1:
             raise ValueError("num_subcenters must be positive")
         self.embedding_size, self.classnum = int(embedding_size), int(classnum)
         self.m, self.s, self.num_subcenters = float(m), float(s), int(num_subcenters)
+        self.margin_warmup_epochs = max(0, int(margin_warmup_epochs))
+        self._training_epoch = 0
         self.weight = nn.Parameter(torch.empty(
             self.classnum * self.num_subcenters, self.embedding_size
         ))
         nn.init.xavier_uniform_(self.weight)
+
+    def set_epoch(self, epoch):
+        self._training_epoch = max(0, int(epoch))
+
+    @property
+    def effective_margin(self):
+        if self.margin_warmup_epochs <= 0:
+            return self.m
+        return self.m * min(1.0, self._training_epoch / self.margin_warmup_epochs)
 
     def cosine_logits(self, embeddings):
         embeddings = F.normalize(embeddings, dim=1, eps=1e-12)
@@ -74,20 +87,44 @@ class ArcFaceHead(nn.Module):
         if labels is None:
             return cosine * self.s
         target = cosine.gather(1, labels[:, None])
+        margin = self.effective_margin
         target_margin = torch.cos(
-            torch.acos(target.clamp(-1 + 1e-4, 1 - 1e-4)) + self.m
+            torch.acos(target.clamp(-1 + 1e-4, 1 - 1e-4)) + margin
         )
+        threshold = math.cos(math.pi - margin)
+        correction = math.sin(math.pi - margin) * margin
+        target_margin = torch.where(target > threshold, target_margin, target - correction)
         output = cosine.clone()
         output.scatter_(1, labels[:, None], target_margin)
         return output * self.s
 
 
 def replace_linear_with_arcface(model, *, num_classes, m=0.5, s=64.0,
-                                num_subcenters=1):
+                                num_subcenters=1, margin_warmup_epochs=0,
+                                subcenter_init_epsilon=1e-3):
     if not isinstance(model.classifier, nn.Linear):
         raise TypeError("ArcFace replacement requires model.classifier to be nn.Linear")
+    classifier = model.classifier
+    if classifier.out_features != num_classes:
+        raise ValueError("Existing classifier class count does not match num_classes")
     model.classifier = ArcFaceHead(
-        model.classifier.in_features, num_classes, m=m, s=s,
-        num_subcenters=num_subcenters,
+        classifier.in_features, num_classes, m=m, s=s,
+        num_subcenters=num_subcenters, margin_warmup_epochs=margin_warmup_epochs,
     )
+    with torch.no_grad():
+        base = classifier.weight.detach().clone()
+        if num_subcenters == 1:
+            model.classifier.weight.copy_(base)
+        else:
+            if subcenter_init_epsilon <= 0:
+                raise ValueError("subcenter_init_epsilon must be positive for K>1")
+            pattern = torch.arange(base.numel(), device=base.device, dtype=base.dtype).reshape_as(base)
+            perturbation = F.normalize(torch.sin(pattern + 1.0), dim=1, eps=1e-12)
+            centers = []
+            for class_index in range(num_classes):
+                for center_index in range(num_subcenters):
+                    sign = -1.0 if center_index % 2 == 0 else 1.0
+                    magnitude = 1.0 + center_index // 2
+                    centers.append(base[class_index] + sign * magnitude * subcenter_init_epsilon * perturbation[class_index])
+            model.classifier.weight.copy_(torch.stack(centers))
     return model.classifier
