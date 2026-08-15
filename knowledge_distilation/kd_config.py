@@ -52,6 +52,11 @@ class KDConfig:
     train_sampler: str = "random"  # "random" or "pk"
     pk_p: int = 16                 # identities per PK batch
     pk_k: int = 4                  # samples per identity in PK batch
+    teacher_center_cache: str = ""
+    initial_student_weights: str = ""
+    resume_training_state: str = ""
+    continuation_source_epoch: int = 0
+    continuation_type: str = "none"
 
     # ── MixUp / CutMix ───────────────────────────────────────────────────────
     # Batch-level augmentasi — meningkatkan generalisasi student
@@ -89,6 +94,13 @@ class KDConfig:
     ce_weight: float = 1.0
     relation_weight: float = 0.05
     embedding_weight: float = 0.0
+    center_weight: float = 0.5
+    feature_weight: float = 0.1
+    center_scale: float = 64.0
+    center_margin: float = 0.35
+    relation_topk: int = 8
+    relation_difference_threshold: float = 0.02
+    adaptive_warmup_epochs: int = 20
     logit_kd_weight: float = 0.0
     topk_k: int = 5
     topk_weight: float = 0.05
@@ -217,6 +229,16 @@ def print_config(cfg: KDConfig) -> None:
         print(
             f"                    scale={cfg.topkd_scale}  "
             f"T={cfg.topkd_temperature or cfg.temperature}  include_gt={cfg.topkd_include_gt}"
+        )
+    if cfg.kd_method == "adaptive_center_relation":
+        print(
+            f"  Adaptive CRD    : center={cfg.center_weight} feature={cfg.feature_weight} "
+            f"relation={cfg.relation_weight} scale={cfg.center_scale} margin={cfg.center_margin}"
+        )
+        print(
+            f"                    negative_topk={cfg.relation_topk} "
+            f"difference_threshold={cfg.relation_difference_threshold} "
+            f"warmup={cfg.adaptive_warmup_epochs}"
         )
     print()
     print(f"  Epochs          : {cfg.epochs}")

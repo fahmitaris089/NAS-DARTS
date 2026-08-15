@@ -1,0 +1,27 @@
+{
+  "exported_at": "2026-08-14T15:19:21.510594",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42",
+  "model_path": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/best_val_acc_model.pth",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/model_benchmark_val_acc.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/model_benchmark_val_acc_int8_static.onnx",
+  "input_size": 224,
+  "opset": 13,
+  "num_classes": 834,
+  "c_init": 10,
+  "num_cells": 8,
+  "stem_downsample": 8,
+  "reduction_indices": [
+    2,
+    5
+  ],
+  "auxiliary": false,
+  "fp32_size_mb": 2.2199,
+  "int8_size_mb": 0.7775,
+  "backend": "onnxruntime",
+  "kd_config": {
+    "teacher_arch": null,
+    "temperature": null,
+    "alpha": null,
+    "epochs": 300
+  }
+}

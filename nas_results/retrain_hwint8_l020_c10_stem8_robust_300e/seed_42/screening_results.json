@@ -1,0 +1,12 @@
+{
+  "status": "screening_complete_test_not_evaluated",
+  "best_epoch": 290,
+  "best_validation_loss": 2.0516236065674742,
+  "best_validation_accuracy": 0.9988009592326139,
+  "best_validation_accuracy_epoch": 192,
+  "best_checkpoint_true_class_margin": 4.6228924232135284,
+  "maximum_validation_true_class_margin": 4.6228924232135284,
+  "checkpoint_selection": "minimum_validation_loss",
+  "best_checkpoint": "nas_results\\retrain_hwint8_l020_c10_stem8_robust_300e\\seed_42\\best_model.pth",
+  "loss_mode": "ce"
+}

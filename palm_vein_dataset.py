@@ -10,7 +10,9 @@ For retrain phase: uses full training set + original val/test.
 """
 
 import json
+import math
 import random
+import warnings
 from pathlib import Path
 from typing import Tuple, Dict, List
 
@@ -194,26 +196,103 @@ class PKBatchSampler(Sampler):
             )
         self.label_to_indices = label_to_indices
         self.labels = sorted(label_to_indices.keys())
-        n_full_batches = len(samples) // self.batch_size
-        self.num_batches = n_full_batches if drop_last else max(1, n_full_batches)
+        # One class must contribute enough K-sized groups to cover all of its
+        # images.  For SCUT-PV (8 train images/class, K=4), this is two class
+        # appearances per epoch.  Padding class slots are rotated by epoch.
+        self.groups_per_label = {
+            label: max(1, math.ceil(len(indices) / self.k_samples))
+            for label, indices in self.label_to_indices.items()
+        }
+        total_slots = sum(self.groups_per_label.values())
+        self.num_batches = math.ceil(total_slots / self.p_classes)
         self.epoch = 0
+        self.replacement_labels = sorted(
+            label for label, indices in self.label_to_indices.items()
+            if len(indices) < self.k_samples
+        )
+        if self.replacement_labels:
+            warnings.warn(
+                f"PK sampler uses replacement for {len(self.replacement_labels)} classes "
+                f"with fewer than K={self.k_samples} samples.", RuntimeWarning,
+            )
+        self.last_epoch_class_counts = {}
+
+    def set_epoch(self, epoch):
+        """Select the deterministic schedule used by the next iteration."""
+        if int(epoch) < 0:
+            raise ValueError("epoch must be non-negative")
+        self.epoch = int(epoch)
+
+    def state_dict(self):
+        return {
+            "epoch": self.epoch,
+            "seed": self.seed,
+            "p_classes": self.p_classes,
+            "k_samples": self.k_samples,
+            "num_batches": self.num_batches,
+        }
+
+    def load_state_dict(self, state):
+        for key in ("seed", "p_classes", "k_samples", "num_batches"):
+            if int(state[key]) != int(getattr(self, key)):
+                raise ValueError(f"PK sampler state mismatch for {key}")
+        self.set_epoch(int(state["epoch"]))
+
+    def _class_schedule(self, rng):
+        remaining = dict(self.groups_per_label)
+        total_slots = self.num_batches * self.p_classes
+        extras = total_slots - sum(remaining.values())
+        # Rotate padding slots rather than permanently oversampling the same IDs.
+        offset = (self.seed + self.epoch * max(1, extras)) % len(self.labels)
+        for i in range(extras):
+            remaining[self.labels[(offset + i) % len(self.labels)]] += 1
+
+        tie_order = self.labels[:]
+        rng.shuffle(tie_order)
+        priority = {label: rank for rank, label in enumerate(tie_order)}
+        batches = []
+        for _ in range(self.num_batches):
+            available = [label for label, count in remaining.items() if count > 0]
+            if len(available) < self.p_classes:
+                raise RuntimeError("Unable to construct a unique-class PK batch")
+            available.sort(key=lambda label: (-remaining[label], priority[label]))
+            chosen = available[:self.p_classes]
+            rng.shuffle(chosen)
+            for label in chosen:
+                remaining[label] -= 1
+            batches.append(chosen)
+        return batches
 
     def __iter__(self):
         rng = random.Random(self.seed + self.epoch)
-        self.epoch += 1
-        labels = self.labels[:]
+        class_batches = self._class_schedule(rng)
+        class_counts = {label: 0 for label in self.labels}
+        pools = {}
+        cursors = {}
+        for label, indices in self.label_to_indices.items():
+            pools[label] = indices[:]
+            rng.shuffle(pools[label])
+            cursors[label] = 0
 
-        for _ in range(self.num_batches):
-            chosen_labels = rng.sample(labels, self.p_classes)
+        for chosen_labels in class_batches:
             batch = []
             for label in chosen_labels:
                 indices = self.label_to_indices[label]
+                class_counts[label] += 1
                 if len(indices) >= self.k_samples:
-                    batch.extend(rng.sample(indices, self.k_samples))
+                    cursor = cursors[label]
+                    if cursor + self.k_samples > len(pools[label]):
+                        pools[label] = indices[:]
+                        rng.shuffle(pools[label])
+                        cursor = 0
+                    selected = pools[label][cursor:cursor + self.k_samples]
+                    cursors[label] = cursor + self.k_samples
+                    batch.extend(selected)
                 else:
                     batch.extend(rng.choices(indices, k=self.k_samples))
             rng.shuffle(batch)
             yield batch
+        self.last_epoch_class_counts = class_counts
 
     def __len__(self):
         return self.num_batches
@@ -449,6 +528,8 @@ def create_retrain_dataloaders(
         "sampler_type": sampler_type,
         "pk_p": pk_p if sampler_type == "pk" else None,
         "pk_k": pk_k if sampler_type == "pk" else None,
+        "pk_num_batches": len(train_loader) if sampler_type == "pk" else None,
+        "pk_replacement_labels": pk_sampler.replacement_labels if sampler_type == "pk" else [],
     }
 
     return train_loader, val_loader, test_loader, info

@@ -405,6 +405,14 @@ def parse_args() -> argparse.Namespace:
         "--model-dir", type=Path, required=True,
         help="Folder KD yang berisi config.json dan best_model.pth",
     )
+    parser.add_argument(
+        "--weights", type=Path, default=Path("best_model.pth"),
+        help="Checkpoint filename inside --model-dir, or an absolute checkpoint path",
+    )
+    parser.add_argument(
+        "--output-stem", type=str, default="model_benchmark",
+        help="Output basename; FP32 uses .onnx and INT8 uses _int8_static.onnx",
+    )
     parser.add_argument("--input-size", type=int, default=224)
     parser.add_argument("--opset", type=int, default=13)
     
@@ -434,9 +442,9 @@ def main() -> None:
     args = parse_args()
     model_dir  = args.model_dir.resolve()
     kd_config_path = model_dir / "config.json"
-    model_path     = model_dir / "best_model.pth"
-    fp32_path      = model_dir / "model_benchmark.onnx"
-    int8_path      = model_dir / "model_benchmark_int8_static.onnx"
+    model_path = args.weights if args.weights.is_absolute() else model_dir / args.weights
+    fp32_path      = model_dir / f"{args.output_stem}.onnx"
+    int8_path      = model_dir / f"{args.output_stem}_int8_static.onnx"
     calib_dir      = resolve_path(args.calib_dir)
 
     if not kd_config_path.exists():

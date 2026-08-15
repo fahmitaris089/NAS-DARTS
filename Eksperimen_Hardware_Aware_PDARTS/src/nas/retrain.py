@@ -20,7 +20,9 @@ Usage:
 import argparse
 import copy
 import csv
+import hashlib
 import json
+import random
 import sys
 import time
 from pathlib import Path
@@ -104,6 +106,9 @@ def train_one_epoch(model, loader, criterion, optimizer, device,
 def validate(model, loader, criterion, device):
     """Evaluate on validation set."""
     model.eval()
+    # Checkpoint selection is always based on ordinary inference CE.  The
+    # training criterion may contain label smoothing or a margin head.
+    inference_criterion = nn.CrossEntropyLoss()
     losses = AverageMeter()
     top1 = AverageMeter()
     margins = AverageMeter()
@@ -114,7 +119,7 @@ def validate(model, loader, criterion, device):
 
         output = model(images)
         logits = output if not isinstance(output, tuple) else output[0]
-        loss = criterion(logits, labels)
+        loss = inference_criterion(logits, labels)
 
         _, pred = logits.max(1)
         acc = pred.eq(labels).float().mean().item()
@@ -318,6 +323,13 @@ def main():
     parser.add_argument("--adaface-t-alpha", type=float, default=0.01)
     parser.add_argument("--skip-test-evaluation", action="store_true",
                         help="Stop after validation-based checkpointing during screening")
+    parser.add_argument("--train_sampler", choices=["random", "pk"], default="random")
+    parser.add_argument("--pk_p", type=int, default=16)
+    parser.add_argument("--pk_k", type=int, default=4)
+    parser.add_argument("--initial_weights", type=str, default="",
+                        help="Common random state shared by controlled scratch ablations")
+    parser.add_argument("--checkpoint_epochs", type=str, default="100")
+    parser.add_argument("--resume_training_state", type=str, default="")
     args = parser.parse_args()
 
     use_auxiliary = args.auxiliary and not args.no_auxiliary and args.loss_mode != "adaface"
@@ -354,6 +366,10 @@ def main():
         use_augmentation=RETRAIN_CFG["use_augmentation"],
         cutout_length=args.cutout_length,
         augmentation_policy=args.augmentation_policy,
+        sampler_type=args.train_sampler,
+        pk_p=args.pk_p,
+        pk_k=args.pk_k,
+        seed=args.seed,
     )
     num_classes = data_info["num_classes"]
 
@@ -384,6 +400,12 @@ def main():
         stem_downsample=args.stem_downsample,
         reduction_indices=reduction_indices,
     ).to(device)
+    if args.initial_weights:
+        initial_payload = torch.load(args.initial_weights, map_location="cpu", weights_only=False)
+        if isinstance(initial_payload, dict) and "student" in initial_payload:
+            initial_payload = initial_payload["student"]
+        model.load_state_dict(initial_payload, strict=True)
+        logger.info(f"  Loaded shared initial state: {args.initial_weights}")
     if args.loss_mode == "adaface":
         replace_linear_with_adaface(
             model, num_classes=num_classes, m=args.adaface_m, h=args.adaface_h,
@@ -396,6 +418,8 @@ def main():
         )
 
     total_params = count_parameters(model)
+    if not args.resume_training_state:
+        torch.save(model.state_dict(), save_dir / "initial_student.pth")
     logger.info(f"\nModel Architecture:")
     logger.info(f"  C_init     : {C_init}")
     logger.info(f"  Cells      : {args.num_cells}")
@@ -474,6 +498,79 @@ def main():
     best_checkpoint_margin = -float("inf")
     maximum_val_margin = -float("inf")
     training_start = time.time()
+    checkpoint_epochs = {
+        int(value) for value in args.checkpoint_epochs.split(",") if value.strip()
+    }
+    best_screening = None
+    best_screening_epoch = 0
+    start_epoch = 1
+
+    def file_hash(path):
+        digest = hashlib.sha256()
+        with Path(path).open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    provenance = {
+        "genotype_sha256": file_hash(genotype_path),
+        "split_sha256": file_hash(args.split_path) if args.split_path else None,
+        "initial_weights_sha256": file_hash(args.initial_weights) if args.initial_weights else None,
+        "seed": args.seed,
+        "sampler": args.train_sampler,
+        "pk_p": args.pk_p if args.train_sampler == "pk" else None,
+        "pk_k": args.pk_k if args.train_sampler == "pk" else None,
+    }
+
+    def rng_state():
+        return {
+            "python": random.getstate(), "numpy": np.random.get_state(),
+            "torch": torch.get_rng_state(),
+            "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+        }
+
+    def save_full_state(path, epoch):
+        sampler = getattr(train_loader, "batch_sampler", None)
+        torch.save({
+            "student": model.state_dict(), "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(), "epoch": epoch,
+            "sampler": sampler.state_dict() if hasattr(sampler, "state_dict") else None,
+            "rng": rng_state(),
+            "scaler": None,
+            "provenance": provenance,
+            "best_metrics": {
+                "best_val_loss": best_val_loss, "best_epoch": best_epoch,
+                "best_val_acc": best_val_acc, "best_acc_epoch": best_acc_epoch,
+                "best_screening": best_screening,
+                "best_screening_epoch": best_screening_epoch,
+            },
+        }, path)
+
+    if args.resume_training_state:
+        state = torch.load(args.resume_training_state, map_location=device, weights_only=False)
+        if state.get("provenance") != provenance:
+            raise ValueError("Resume provenance does not match current retraining run")
+        model.load_state_dict(state["student"], strict=True)
+        optimizer.load_state_dict(state["optimizer"])
+        scheduler.load_state_dict(state["scheduler"])
+        sampler = getattr(train_loader, "batch_sampler", None)
+        if state.get("sampler") is not None and hasattr(sampler, "load_state_dict"):
+            sampler.load_state_dict(state["sampler"])
+        random.setstate(state["rng"]["python"])
+        np.random.set_state(state["rng"]["numpy"])
+        torch.set_rng_state(state["rng"]["torch"])
+        if torch.cuda.is_available() and state["rng"].get("cuda") is not None:
+            torch.cuda.set_rng_state_all(state["rng"]["cuda"])
+        metrics = state["best_metrics"]
+        best_val_loss, best_epoch = metrics["best_val_loss"], metrics["best_epoch"]
+        best_val_acc, best_acc_epoch = metrics["best_val_acc"], metrics["best_acc_epoch"]
+        best_screening = tuple(metrics["best_screening"]) if metrics["best_screening"] else None
+        best_screening_epoch = metrics["best_screening_epoch"]
+        start_epoch = int(state["epoch"]) + 1
+    else:
+        # Model/dataloader construction consumes RNG. Reset before epoch 1 so
+        # controlled ablations with the same seed see the same stochastic stream.
+        set_seed(args.seed)
 
     logger.info(f"\n{'='*60}")
     logger.info(f"  Training: {args.epochs} epochs")
@@ -484,10 +581,13 @@ def main():
     logger.info(f"  Batch: {args.batch_size}")
     logger.info(f"{'='*60}")
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, args.epochs + 1):
         # Schedule drop path probability
         drop_path = args.drop_path_prob * epoch / args.epochs
         model.set_drop_path_prob(drop_path)
+        batch_sampler = getattr(train_loader, "batch_sampler", None)
+        if hasattr(batch_sampler, "set_epoch"):
+            batch_sampler.set_epoch(epoch - 1)
 
         epoch_start = time.time()
 
@@ -524,6 +624,7 @@ def main():
             best_epoch = epoch
             best_checkpoint_margin = val_margin
             torch.save(model.state_dict(), save_dir / "best_model.pth")
+            torch.save(model.state_dict(), save_dir / "best_by_val_loss.pth")
 
         maximum_val_margin = max(maximum_val_margin, val_margin)
 
@@ -531,6 +632,20 @@ def main():
             best_val_acc = val_acc
             best_acc_epoch = epoch
             torch.save(model.state_dict(), save_dir / "best_val_acc_model.pth")
+            torch.save(model.state_dict(), save_dir / "best_by_val_acc.pth")
+
+        screening = (round((1.0 - val_acc) * data_info["val_size"]), val_loss, -val_margin)
+        if best_screening is None or screening < best_screening:
+            best_screening = screening
+            best_screening_epoch = epoch
+            torch.save(model.state_dict(), save_dir / "best_screening.pth")
+            save_full_state(save_dir / "training_state_best.pth", epoch)
+        save_full_state(save_dir / "training_state_last.pth", epoch)
+        if epoch in checkpoint_epochs:
+            checkpoint_dir = save_dir / "checkpoints"
+            checkpoint_dir.mkdir(exist_ok=True)
+            torch.save(model.state_dict(), checkpoint_dir / f"epoch_{epoch:03d}.pth")
+            save_full_state(checkpoint_dir / f"training_state_epoch_{epoch:03d}.pth", epoch)
 
         # Print
         markers = []

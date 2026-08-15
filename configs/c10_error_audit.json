@@ -1,0 +1,27 @@
+{
+  "output_dir": "results/diagnostics/c10_error_audit_seed42",
+  "data_dir": "preprocessed_results",
+  "split_path": "PalmVein_Lightweight_Benchmark/dataset/splits/split_info.json",
+  "input_size": 224,
+  "batch_size": 64,
+  "num_workers": 0,
+  "num_classes": 834,
+  "teacher": {
+    "name": "efficientnet_v2_m_teacher",
+    "arch": "efficientnet_v2_m",
+    "weights": "Eksperimen_Hardware_Aware_PDARTS/checkpoints/teacher/EfficientNetV2M_best_model.pth"
+  },
+  "students": [
+    {"name": "c8_ce_best_loss", "config": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/config.json", "weights": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/best_model.pth"},
+    {"name": "c8_ce_best_acc", "config": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/config.json", "weights": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/best_val_acc_model.pth"},
+    {"name": "c8_ce_last", "config": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/config.json", "weights": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/last_model.pth"},
+    {"name": "c8_dkd_initial", "config": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/config.json", "weights": "knowledge_distilation/kd_results/dkd_l020_c8_stem8_robust_seed42/initial_student.pth"},
+    {"name": "c8_dkd_best_loss", "config": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/config.json", "weights": "knowledge_distilation/kd_results/dkd_l020_c8_stem8_robust_seed42/best_by_val_loss.pth"},
+    {"name": "c8_dkd_best_acc", "config": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/config.json", "weights": "knowledge_distilation/kd_results/dkd_l020_c8_stem8_robust_seed42/best_by_val_acc.pth"},
+    {"name": "c8_dkd_last", "config": "nas_results/retrain_hwint8_l020_c8_stem8_robust_300e/seed_42/config.json", "weights": "knowledge_distilation/kd_results/dkd_l020_c8_stem8_robust_seed42/last_model.pth"},
+    {"name": "c10_ce_best_loss", "config": "nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/config.json", "weights": "nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/best_model.pth"},
+    {"name": "c10_ce_best_acc", "config": "nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/config.json", "weights": "nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/best_val_acc_model.pth"},
+    {"name": "c10_ce_last", "config": "nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/config.json", "weights": "nas_results/retrain_hwint8_l020_c10_stem8_robust_300e/seed_42/last_model.pth"},
+    {"name": "c8_adaface_best_loss", "config": "nas_results/retrain_hwint8_l020_c8_stem8_adaface_300e/seed_42/config.json", "weights": "nas_results/retrain_hwint8_l020_c8_stem8_adaface_300e/seed_42/best_model.pth", "optional": true}
+  ]
+}

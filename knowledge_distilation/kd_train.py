@@ -71,7 +71,12 @@ from kd_loss import (
 )
 from model_eval import EvalNetwork
 from adaface import replace_linear_with_adaface
-from palm_vein_dataset import create_retrain_dataloaders
+from palm_vein_dataset import PalmVeinDataset, create_retrain_dataloaders, get_transforms
+from torch.utils.data import DataLoader
+from adaptive_center_relation import (
+    AdaptiveCenterRelationLoss, load_center_cache, save_center_cache,
+    sha256_file, stable_json_hash,
+)
 
 
 # ─── Seed ─────────────────────────────────────────────────────────────────────
@@ -142,7 +147,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                         choices=[
                             "hinton", "dkd", "pairwise", "embedding", "hybrid",
                             "hard_topk", "conservative", "conservative_multiteacher",
-                            "topkd",
+                            "topkd", "adaptive_center_relation",
                         ],
                         help="KD loss method. 'hinton' preserves the original logit KD path.")
     parser.add_argument("--dkd_alpha", type=float, default=cfg.dkd_alpha,
@@ -163,6 +168,23 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                         help="CE weight for pairwise/embedding/hybrid KD")
     parser.add_argument("--relation_weight", type=float, default=cfg.relation_weight,
                         help="Pairwise relation loss weight")
+    parser.add_argument("--center_weight", type=float, default=cfg.center_weight)
+    parser.add_argument("--feature_weight", type=float, default=cfg.feature_weight)
+    parser.add_argument("--center_scale", type=float, default=cfg.center_scale)
+    parser.add_argument("--center_margin", type=float, default=cfg.center_margin)
+    parser.add_argument("--relation_topk", type=int, default=cfg.relation_topk)
+    parser.add_argument("--relation_difference_threshold", type=float,
+                        default=cfg.relation_difference_threshold)
+    parser.add_argument("--adaptive_warmup_epochs", type=int,
+                        default=cfg.adaptive_warmup_epochs)
+    parser.add_argument("--teacher_center_cache", default=cfg.teacher_center_cache)
+    parser.add_argument("--initial_student_weights", default=cfg.initial_student_weights,
+                        help="Optional common random initial state for controlled scratch runs")
+    parser.add_argument("--resume_training_state", default=cfg.resume_training_state)
+    parser.add_argument("--continuation_source_epoch", type=int,
+                        default=cfg.continuation_source_epoch)
+    parser.add_argument("--continuation_type", choices=["none", "weights_only"],
+                        default=cfg.continuation_type)
     parser.add_argument("--embedding_weight", type=float, default=cfg.embedding_weight,
                         help="Projected embedding loss weight")
     parser.add_argument("--logit_kd_weight", type=float, default=cfg.logit_kd_weight,
@@ -305,6 +327,20 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.skip_test_evaluation = args.skip_test_evaluation
     cfg.ce_weight           = args.ce_weight
     cfg.relation_weight     = args.relation_weight
+    cfg.center_weight       = args.center_weight
+    cfg.feature_weight      = args.feature_weight
+    cfg.center_scale        = args.center_scale
+    cfg.center_margin       = args.center_margin
+    cfg.relation_topk       = args.relation_topk
+    cfg.relation_difference_threshold = args.relation_difference_threshold
+    cfg.adaptive_warmup_epochs = args.adaptive_warmup_epochs
+    cfg.teacher_center_cache = args.teacher_center_cache
+    cfg.initial_student_weights = args.initial_student_weights
+    cfg.resume_training_state = args.resume_training_state
+    cfg.continuation_source_epoch = args.continuation_source_epoch
+    cfg.continuation_type = args.continuation_type
+    if cfg.continuation_type == "weights_only" and cfg.continuation_source_epoch <= 0:
+        parser.error("weights_only continuation requires --continuation_source_epoch > 0")
     cfg.embedding_weight    = args.embedding_weight
     cfg.logit_kd_weight     = args.logit_kd_weight
     cfg.topk_k              = args.topk_k
@@ -381,7 +417,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
         cfg.mix_prob        = args.mix_prob
         cfg.mix_switch_prob = args.mix_switch_prob
 
-    if cfg.kd_method in {"hard_topk", "conservative", "conservative_multiteacher", "topkd"} and (cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0):
+    if cfg.kd_method in {"hard_topk", "conservative", "conservative_multiteacher", "topkd", "adaptive_center_relation"} and (cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0):
         print(
             f"WARNING: {cfg.kd_method} KD requires unmixed identity targets; "
             "forcing MixUp/CutMix off. Pass --no_mix to silence this warning."
@@ -658,6 +694,60 @@ def teacher_forward_with_embeddings(
     return logits, captured["embedding"]
 
 
+@torch.no_grad()
+def prepare_teacher_center_bank(teacher, train_samples, cfg, device, logger,
+                                label_map) -> tuple[torch.Tensor, dict]:
+    """Build/reuse training-only teacher class centers with strict provenance."""
+    teacher_hash = sha256_file(cfg.teacher_weights)
+    split_hash = sha256_file(cfg.split_path)
+    teacher_dim = get_teacher_embedding_dim(teacher)
+    metadata = {
+        "teacher_sha256": teacher_hash,
+        "split_sha256": split_hash,
+        "label_map_sha256": stable_json_hash(label_map),
+        "preprocessing_sha256": stable_json_hash({
+            "input_size": cfg.input_size,
+            "transform": "deterministic_validation_imagenet_normalization",
+            "mean": [0.485, 0.456, 0.406],
+            "std": [0.229, 0.224, 0.225],
+            "grayscale_to_rgb": "repeat_channels",
+        }),
+        "num_classes": cfg.num_classes,
+        "embedding_dim": teacher_dim,
+        "source_partition": "train",
+        "sample_count": len(train_samples),
+    }
+    cache_path = Path(cfg.teacher_center_cache) if cfg.teacher_center_cache else (
+        _HERE / "cache" / f"teacher_centers_{teacher_hash[:12]}_{split_hash[:12]}.pth"
+    )
+    cfg.teacher_center_cache = str(cache_path)
+    if cache_path.exists():
+        logger.info(f"  Loading verified teacher center cache: {cache_path}")
+        return load_center_cache(cache_path, metadata).to(device), metadata
+
+    dataset = PalmVeinDataset(train_samples, get_transforms("val", cfg.input_size))
+    loader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=False,
+                        num_workers=cfg.num_workers, pin_memory=True)
+    sums = torch.zeros(cfg.num_classes, teacher_dim, dtype=torch.float64, device=device)
+    counts = torch.zeros(cfg.num_classes, dtype=torch.long, device=device)
+    teacher.eval()
+    for images, labels in loader:
+        images, labels = images.to(device), labels.to(device)
+        _, embeddings = teacher_forward_with_embeddings(teacher, cfg.teacher_arch, images)
+        embeddings = torch.nn.functional.normalize(embeddings.float(), dim=1)
+        sums.index_add_(0, labels, embeddings.double())
+        counts.index_add_(0, labels, torch.ones_like(labels, dtype=torch.long))
+    missing = torch.where(counts == 0)[0].tolist()
+    if missing:
+        raise ValueError(f"Cannot initialize center bank; training classes missing: {missing[:20]}")
+    centers = torch.nn.functional.normalize(
+        (sums / counts[:, None]).float(), dim=1
+    )
+    save_center_cache(cache_path, centers, metadata)
+    logger.info(f"  Created training-only teacher center cache: {cache_path}")
+    return centers, metadata
+
+
 # ─── Load Student ─────────────────────────────────────────────────────────────
 
 def load_student(cfg: KDConfig, device: torch.device, logger: logging.Logger) -> nn.Module:
@@ -705,9 +795,27 @@ def load_student(cfg: KDConfig, device: torch.device, logger: logging.Logger) ->
         stem_downsample   = stem_downsample,
         reduction_indices = reduction_indices,
     )
+    use_adaface = bool(cfg.adaface or retrain_cfg.get("loss_mode") == "adaface")
+    if use_adaface:
+        replace_linear_with_adaface(
+            student, num_classes=cfg.num_classes,
+            m=float(retrain_cfg.get("adaface_m", cfg.adaface_m)),
+            h=float(retrain_cfg.get("adaface_h", cfg.adaface_h)),
+            s=float(retrain_cfg.get("adaface_s", cfg.adaface_s)),
+            t_alpha=float(retrain_cfg.get("adaface_t_alpha", cfg.adaface_t_alpha)),
+        )
+        cfg.adaface = True
+        logger.info("  Student head: AdaFace (margin training; cosine inference logits)")
 
     if cfg.no_pretrained_student:
-        logger.info("  Student: random initialization (from scratch, --no_pretrained_student)")
+        if cfg.initial_student_weights:
+            state_dict = torch.load(cfg.initial_student_weights, map_location="cpu", weights_only=False)
+            if isinstance(state_dict, dict) and "student" in state_dict:
+                state_dict = state_dict["student"]
+            student.load_state_dict(state_dict, strict=True)
+            logger.info(f"  Student: common initial state {cfg.initial_student_weights}")
+        else:
+            logger.info("  Student: random initialization (from scratch, --no_pretrained_student)")
     else:
         logger.info(f"  Loading student weights: {cfg.student_weights}")
         state_dict = torch.load(cfg.student_weights, map_location="cpu")
@@ -932,7 +1040,7 @@ def train_one_epoch(
         anchor.eval()
     if teacher2 is not None:
         teacher2.eval()
-    total_loss = total_ce = total_kd = total_rel = total_emb = total_logit_kd = 0.0
+    total_loss = total_ce = total_kd = total_center = total_rel = total_emb = total_logit_kd = 0.0
     total_topk = total_margin = total_hard_ratio = total_true_rank = 0.0
     total_anchor = 0.0
     total_teacher1_kd = total_teacher2_kd = total_teacher2_active = 0.0
@@ -964,6 +1072,17 @@ def train_one_epoch(
                         raise RuntimeError("conservative_multiteacher KD requires teacher2")
                     logits_teacher2 = teacher2(mixed_images)
                 teacher_embeddings = None
+            elif cfg.kd_method == "adaptive_center_relation":
+                logits_student, student_embeddings = student.forward_with_embeddings(mixed_images)
+                if is_mixed:
+                    raise RuntimeError("Adaptive center-relation distillation requires unmixed labels")
+                loss, breakdown = criterion(
+                    logits_student=logits_student,
+                    student_embeddings=student_embeddings,
+                    teacher_embeddings=teacher_embeddings,
+                    targets=targets,
+                    epoch=epoch,
+                )
             else:
                 logits_teacher, teacher_embeddings = teacher_forward_with_embeddings(
                     teacher, cfg.teacher_arch, mixed_images
@@ -1038,7 +1157,11 @@ def train_one_epoch(
         scaler.scale(loss).backward()
         # Gradient clipping
         scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(student.parameters(), max_norm=5.0)
+        parameters = [
+            parameter for group in optimizer.param_groups
+            for parameter in group["params"] if parameter.grad is not None
+        ]
+        torch.nn.utils.clip_grad_norm_(parameters, max_norm=5.0)
         scaler.step(optimizer)
         scaler.update()
         scheduler.step()
@@ -1056,6 +1179,7 @@ def train_one_epoch(
         total_loss += breakdown["loss_total"]
         total_ce   += breakdown["loss_ce"]
         total_kd   += breakdown.get("loss_kd", 0.0)
+        total_center += breakdown.get("loss_center", 0.0)
         total_rel  += breakdown.get("loss_relation", 0.0)
         total_emb  += breakdown.get("loss_embedding", 0.0)
         total_logit_kd += breakdown.get("loss_logit_kd", 0.0)
@@ -1082,6 +1206,7 @@ def train_one_epoch(
                 f"kd={breakdown.get('loss_kd', 0.0):.4f} "
                 f"tckd={breakdown.get('loss_tckd', 0.0):.4f} "
                 f"nckd={breakdown.get('loss_nckd', 0.0):.4f} "
+                f"center={breakdown.get('loss_center', 0.0):.4f} "
                 f"rel={breakdown.get('loss_relation', 0.0):.4f} "
                 f"emb={breakdown.get('loss_embedding', 0.0):.4f} "
                 f"topk={breakdown.get('loss_topk', 0.0):.4f} "
@@ -1101,6 +1226,7 @@ def train_one_epoch(
     train_loss = total_loss / n_batches
     train_ce   = total_ce   / n_batches
     train_kd   = total_kd   / n_batches
+    train_center = total_center / n_batches
     train_rel  = total_rel  / n_batches
     train_emb  = total_emb  / n_batches
     train_logit_kd = total_logit_kd / n_batches
@@ -1120,7 +1246,7 @@ def train_one_epoch(
     train_acc  = correct    / n_samples
 
     return (
-        train_loss, train_ce, train_kd, train_acc,
+        train_loss, train_ce, train_kd, train_center, train_acc,
         train_rel, train_emb, train_logit_kd,
         train_topk, train_margin, train_anchor,
         train_teacher1_kd, train_teacher2_kd, train_teacher2_active,
@@ -1128,19 +1254,6 @@ def train_one_epoch(
         train_tdl, train_contrast, train_topkd,
         train_tckd, train_nckd,
     )
-
-    use_adaface = bool(cfg.adaface or retrain_cfg.get("loss_mode") == "adaface")
-    if use_adaface:
-        replace_linear_with_adaface(
-            student, num_classes=cfg.num_classes,
-            m=float(retrain_cfg.get("adaface_m", cfg.adaface_m)),
-            h=float(retrain_cfg.get("adaface_h", cfg.adaface_h)),
-            s=float(retrain_cfg.get("adaface_s", cfg.adaface_s)),
-            t_alpha=float(retrain_cfg.get("adaface_t_alpha", cfg.adaface_t_alpha)),
-        )
-        cfg.adaface = True
-        logger.info("  Student head: AdaFace (margin for CE, cosine logits for DKD/inference)")
-
 
 # ─── Evaluation ──────────────────────────────────────────────────────────────
 
@@ -1183,6 +1296,9 @@ def evaluate(student, loader, device, compute_auc: bool = False):
         "acc" : correct / n_samples,
         "loss": total_loss / len(loader),
         "true_class_margin": total_true_margin / n_samples,
+        "correct": int(correct),
+        "samples": int(n_samples),
+        "errors": int(n_samples - correct),
     }
 
     if compute_auc and all_probs:
@@ -1203,14 +1319,19 @@ def evaluate(student, loader, device, compute_auc: bool = False):
 # ─── Save checkpoint ─────────────────────────────────────────────────────────
 
 def save_checkpoint(student, epoch: int, val_acc: float,
-                    is_best: bool, output_dir: Path, cfg=None) -> None:
-    """Simpan state_dict saja (tidak perlu optimizer untuk inference)."""
+                    is_best_loss: bool, is_best_acc: bool,
+                    output_dir: Path, cfg=None) -> None:
+    """Save inference-compatible state dictionaries for both validation criteria."""
     ckpt_path = output_dir / "last_model.pth"
     torch.save(student.state_dict(), ckpt_path)
 
-    if is_best:
-        best_path = output_dir / "best_model.pth"
-        torch.save(student.state_dict(), best_path)
+    if is_best_loss:
+        torch.save(student.state_dict(), output_dir / "best_by_val_loss.pth")
+        # Backward-compatible alias used by existing exporters and reports.
+        torch.save(student.state_dict(), output_dir / "best_model.pth")
+
+    if is_best_acc:
+        torch.save(student.state_dict(), output_dir / "best_by_val_acc.pth")
 
     if cfg is not None and getattr(cfg, "save_epoch_checkpoints", False):
         start_epoch = int(getattr(cfg, "checkpoint_start_epoch", 80))
@@ -1220,6 +1341,44 @@ def save_checkpoint(student, epoch: int, val_acc: float,
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
             epoch_path = checkpoint_dir / f"epoch_{epoch:03d}.pth"
             torch.save(student.state_dict(), epoch_path)
+
+
+def _capture_rng_state():
+    return {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.get_rng_state(),
+        "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+    }
+
+
+def _restore_rng_state(state):
+    random.setstate(state["python"])
+    np.random.set_state(state["numpy"])
+    torch.set_rng_state(state["torch"])
+    if torch.cuda.is_available() and state.get("cuda") is not None:
+        torch.cuda.set_rng_state_all(state["cuda"])
+
+
+def _sampler_state(loader):
+    sampler = getattr(loader, "batch_sampler", None)
+    return sampler.state_dict() if hasattr(sampler, "state_dict") else None
+
+
+def save_training_state(path, *, student, criterion, optimizer, scheduler,
+                        scaler, train_loader, epoch, best_metrics, provenance):
+    torch.save({
+        "student": student.state_dict(),
+        "criterion": criterion.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
+        "scaler": scaler.state_dict(),
+        "sampler": _sampler_state(train_loader),
+        "epoch": int(epoch),
+        "best_metrics": dict(best_metrics),
+        "rng": _capture_rng_state(),
+        "provenance": dict(provenance),
+    }, path)
 
 
 # ─── Plot training curves ─────────────────────────────────────────────────────
@@ -1374,6 +1533,15 @@ def main():
         teacher = None
         logger.info("  Teacher: skipped (epochs=0, evaluation only)")
     student = load_student(cfg, device, logger)
+    if cfg.kd_method == "adaptive_center_relation":
+        if int(student.classifier.out_features) != int(_ds_info["num_classes"]):
+            raise ValueError("Student classifier and dataset label-map class count differ")
+        if teacher is not None and int(_find_final_linear(teacher).out_features) != int(_ds_info["num_classes"]):
+            raise ValueError("Teacher classifier and dataset label-map class count differ")
+        logger.info(
+            "  Label-map compatibility: class dimensions match configured split. "
+            "Teacher checkpoint has no embedded label-map hash; ordering is bound by the supplied split provenance."
+        )
     anchor_student = None
     teacher2 = None
     if cfg.kd_method in {"conservative", "conservative_multiteacher"}:
@@ -1403,6 +1571,21 @@ def main():
         )
     else:
         logger.info("  Initial TEST : skipped by screening protocol")
+
+    # Epoch 0 is a real candidate: the CE/AdaFace student before any KD update.
+    # This prevents fine-tuning from silently replacing a stronger initializer.
+    initial_state = student.state_dict()
+    if not cfg.resume_training_state:
+        torch.save(initial_state, output_dir / "initial_student.pth")
+        torch.save(initial_state, output_dir / "best_by_val_loss.pth")
+        torch.save(initial_state, output_dir / "best_by_val_acc.pth")
+        torch.save(initial_state, output_dir / "best_screening.pth")
+        torch.save(initial_state, output_dir / "best_model.pth")
+        torch.save(initial_state, output_dir / "last_model.pth")
+    logger.info(
+        "  Epoch 0 checkpoint registered as initial candidate: "
+        "initial_student.pth, best_by_val_loss.pth, best_by_val_acc.pth"
+    )
 
     # ── Loss ──
     if cfg.kd_method == "hinton":
@@ -1506,6 +1689,30 @@ def main():
             f"contrast={cfg.topkd_contrast_weight} scale={cfg.topkd_scale} "
             f"T={topkd_temperature} include_gt={cfg.topkd_include_gt}"
         )
+    elif cfg.kd_method == "adaptive_center_relation":
+        centers, center_metadata = prepare_teacher_center_bank(
+            teacher, train_loader.dataset.samples, cfg, device, logger,
+            _ds_info["label_map"],
+        )
+        criterion = AdaptiveCenterRelationLoss(
+            student_dim=get_student_embedding_dim(student),
+            teacher_dim=get_teacher_embedding_dim(teacher),
+            num_classes=cfg.num_classes,
+            initial_centers=centers,
+            center_weight=cfg.center_weight,
+            feature_weight=cfg.feature_weight,
+            relation_weight=cfg.relation_weight,
+            scale=cfg.center_scale,
+            margin=cfg.center_margin,
+            topk_negatives=cfg.relation_topk,
+            difference_threshold=cfg.relation_difference_threshold,
+            warmup_epochs=cfg.adaptive_warmup_epochs,
+            label_smoothing=cfg.label_smoothing,
+        ).to(device)
+        logger.info(
+            f"  Loss: {criterion.method_label}; CE + ramp20*(center={cfg.center_weight}, "
+            f"feature={cfg.feature_weight}, relation={cfg.relation_weight})"
+        )
     else:
         use_relation = cfg.kd_method in {"pairwise", "hybrid"}
         use_embedding = cfg.kd_method in {"embedding", "hybrid"} and cfg.embedding_weight > 0
@@ -1540,39 +1747,134 @@ def main():
     scheduler = build_scheduler(optimizer, cfg, len(train_loader))
     scaler    = GradScaler("cuda", enabled=cfg.amp)
 
+    provenance = {
+        "teacher_sha256": sha256_file(cfg.teacher_weights),
+        "student_config_sha256": sha256_file(cfg.student_config_path),
+        "split_sha256": sha256_file(cfg.split_path),
+        "initial_student_sha256": (
+            sha256_file(cfg.initial_student_weights) if cfg.initial_student_weights else
+            sha256_file(cfg.student_weights) if not cfg.no_pretrained_student else None
+        ),
+        "method": cfg.kd_method,
+        "method_label": getattr(criterion, "method_label", cfg.kd_method),
+        "label_map_compatibility": (
+            "class_dimension_plus_supplied_split; teacher checkpoint lacks embedded label-map hash"
+            if cfg.kd_method == "adaptive_center_relation" else "not_audited_by_this_method"
+        ),
+        "continuation_type": cfg.continuation_type,
+        "continuation_source_epoch": cfg.continuation_source_epoch,
+        "teacher_center_cache": cfg.teacher_center_cache or None,
+        "teacher_center_cache_sha256": (
+            sha256_file(cfg.teacher_center_cache) if cfg.teacher_center_cache else None
+        ),
+    }
+    # The cache path may be auto-resolved after the initial config dump.
+    with open(output_dir / "config.json", "w") as f:
+        json.dump(cfg.__dict__, f, indent=2)
+
     # ── Training loop ──
-    best_val_acc  = 0.0
-    best_val_loss = float("inf")
-    best_epoch    = 0
+    best_val_acc  = initial_val_results["acc"]
+    best_val_loss = initial_val_results["loss"]
+    best_loss_epoch = 0
+    best_acc_epoch = 0
+    best_acc_tiebreak_loss = initial_val_results["loss"]
+    best_screening = (
+        initial_val_results["errors"], initial_val_results["loss"],
+        -initial_val_results["true_class_margin"],
+    )
+    best_screening_epoch = 0
+    start_epoch = 1
     history       = []
 
+    if cfg.resume_training_state:
+        state = torch.load(cfg.resume_training_state, map_location=device, weights_only=False)
+        if state.get("provenance") != provenance:
+            raise ValueError("Resume provenance does not match current experiment")
+        student.load_state_dict(state["student"], strict=True)
+        criterion.load_state_dict(state["criterion"], strict=True)
+        optimizer.load_state_dict(state["optimizer"])
+        scheduler.load_state_dict(state["scheduler"])
+        scaler.load_state_dict(state["scaler"])
+        sampler = getattr(train_loader, "batch_sampler", None)
+        if state.get("sampler") is not None and hasattr(sampler, "load_state_dict"):
+            sampler.load_state_dict(state["sampler"])
+        _restore_rng_state(state["rng"])
+        metrics = state["best_metrics"]
+        best_val_acc = metrics["best_val_acc"]
+        best_val_loss = metrics["best_val_loss"]
+        best_loss_epoch = metrics["best_loss_epoch"]
+        best_acc_epoch = metrics["best_acc_epoch"]
+        best_acc_tiebreak_loss = metrics["best_acc_tiebreak_loss"]
+        best_screening = tuple(metrics["best_screening"])
+        best_screening_epoch = metrics["best_screening_epoch"]
+        start_epoch = int(state["epoch"]) + 1
+        logger.info(f"  Exact resume restored at epoch {state['epoch']}; next={start_epoch}")
+    else:
+        # Teacher/cache/model construction consumes RNG. Reset before epoch 1
+        # so scratch ablations share the same sampling/augmentation stream.
+        set_seed(cfg.seed)
+        initial_best_metrics = {
+            "best_val_acc": best_val_acc,
+            "best_val_loss": best_val_loss,
+            "best_loss_epoch": best_loss_epoch,
+            "best_acc_epoch": best_acc_epoch,
+            "best_acc_tiebreak_loss": best_acc_tiebreak_loss,
+            "best_screening": list(best_screening),
+            "best_screening_epoch": best_screening_epoch,
+        }
+        save_training_state(
+            output_dir / "training_state_best.pth", student=student,
+            criterion=criterion, optimizer=optimizer, scheduler=scheduler,
+            scaler=scaler, train_loader=train_loader, epoch=0,
+            best_metrics=initial_best_metrics, provenance=provenance,
+        )
+        save_training_state(
+            output_dir / "training_state_last.pth", student=student,
+            criterion=criterion, optimizer=optimizer, scheduler=scheduler,
+            scaler=scaler, train_loader=train_loader, epoch=0,
+            best_metrics=initial_best_metrics, provenance=provenance,
+        )
+
     csv_path = output_dir / "training_log.csv"
-    with open(csv_path, "w", newline="") as f:
-        csv.writer(f).writerow([
-            "epoch", "train_loss", "train_ce", "train_kd",
-            "train_relation", "train_embedding", "train_logit_kd",
-            "train_topk", "train_margin", "train_anchor",
-            "train_teacher1_kd", "train_teacher2_kd", "teacher2_active",
-            "train_tdl", "train_contrast", "train_topkd", "train_tckd", "train_nckd",
-            "hard_ratio", "avg_true_rank",
-            "train_acc", "val_loss", "val_acc", "lr", "time_s",
-            "val_true_class_margin",
-        ])
+    csv_mode = "a" if cfg.resume_training_state and csv_path.exists() else "w"
+    with open(csv_path, csv_mode, newline="") as f:
+        writer = csv.writer(f)
+        if csv_mode == "w":
+            writer.writerow([
+                "epoch", "train_loss", "train_ce", "train_kd", "train_center",
+                "train_relation", "train_embedding", "train_logit_kd",
+                "train_topk", "train_margin", "train_anchor",
+                "train_teacher1_kd", "train_teacher2_kd", "teacher2_active",
+                "train_tdl", "train_contrast", "train_topkd", "train_tckd", "train_nckd",
+                "hard_ratio", "avg_true_rank",
+                "train_acc", "val_loss", "val_acc", "lr", "time_s",
+                "val_true_class_margin",
+            ])
+            writer.writerow([
+                0, "", "", "", "", "", "", "", "", "", "", "", "", "",
+                "", "", "", "", "", "", "", "",
+                round(initial_val_results["loss"], 6),
+                round(initial_val_results["acc"], 4),
+                "", "", round(initial_val_results["true_class_margin"], 6),
+            ])
 
     logger.info("\n" + "=" * 70)
     logger.info(f"  Mulai KD Training  |  {cfg.epochs} epochs  |  device={device}")
     logger.info("=" * 70)
 
-    for epoch in range(1, cfg.epochs + 1):
+    for epoch in range(start_epoch, cfg.epochs + 1):
         t0 = time.time()
 
         # Drop path schedule: linear 0 → drop_path_prob
         dp_prob = cfg.drop_path_prob * epoch / cfg.epochs
         student.set_drop_path_prob(dp_prob)
+        batch_sampler = getattr(train_loader, "batch_sampler", None)
+        if hasattr(batch_sampler, "set_epoch"):
+            batch_sampler.set_epoch(epoch - 1)
 
         # Train
         (
-            train_loss, train_ce, train_kd, train_acc,
+            train_loss, train_ce, train_kd, train_center, train_acc,
             train_rel, train_emb, train_logit_kd,
             train_topk, train_margin, train_anchor,
             train_teacher1_kd, train_teacher2_kd, train_teacher2_active,
@@ -1594,18 +1896,61 @@ def main():
         elapsed = time.time() - t0
         current_lr = optimizer.param_groups[0]["lr"]
 
-        best_val_acc = max(best_val_acc, val_acc)
-        is_best = val_loss < best_val_loss
-        if is_best:
+        is_best_loss = val_loss < best_val_loss
+        if is_best_loss:
             best_val_loss = val_loss
-            best_epoch = epoch
+            best_loss_epoch = epoch
 
-        save_checkpoint(student, epoch, val_acc, is_best, output_dir, cfg)
+        # Accuracy is primary for this file; validation loss breaks accuracy ties.
+        is_best_acc = (
+            val_acc > best_val_acc
+            or (val_acc == best_val_acc and val_loss < best_acc_tiebreak_loss)
+        )
+        if is_best_acc:
+            best_val_acc = val_acc
+            best_acc_epoch = epoch
+            best_acc_tiebreak_loss = val_loss
+
+        screening_tuple = (
+            val_results["errors"], val_loss, -val_results["true_class_margin"]
+        )
+        is_best_screening = screening_tuple < best_screening
+        if is_best_screening:
+            best_screening = screening_tuple
+            best_screening_epoch = epoch
+            torch.save(student.state_dict(), output_dir / "best_screening.pth")
+
+        save_checkpoint(
+            student, epoch, val_acc, is_best_loss, is_best_acc, output_dir, cfg
+        )
+        best_metrics = {
+            "best_val_acc": best_val_acc,
+            "best_val_loss": best_val_loss,
+            "best_loss_epoch": best_loss_epoch,
+            "best_acc_epoch": best_acc_epoch,
+            "best_acc_tiebreak_loss": best_acc_tiebreak_loss,
+            "best_screening": list(best_screening),
+            "best_screening_epoch": best_screening_epoch,
+        }
+        save_training_state(
+            output_dir / "training_state_last.pth", student=student,
+            criterion=criterion, optimizer=optimizer, scheduler=scheduler,
+            scaler=scaler, train_loader=train_loader, epoch=epoch,
+            best_metrics=best_metrics, provenance=provenance,
+        )
+        if is_best_screening:
+            save_training_state(
+                output_dir / "training_state_best.pth", student=student,
+                criterion=criterion, optimizer=optimizer, scheduler=scheduler,
+                scaler=scaler, train_loader=train_loader, epoch=epoch,
+                best_metrics=best_metrics, provenance=provenance,
+            )
 
         # Log
         logger.info(
             f"  E {epoch:3d}/{cfg.epochs} | "
             f"loss={train_loss:.4f} ce={train_ce:.4f} kd={train_kd:.4f} "
+            f"center={train_center:.4f} "
             f"rel={train_rel:.4f} emb={train_emb:.4f} logit_kd={train_logit_kd:.4f} "
             f"topk={train_topk:.4f} margin={train_margin:.4f} anchor={train_anchor:.4f} "
             f"tdl={train_tdl:.4f} contrast={train_contrast:.4f} topkd={train_topkd:.4f} "
@@ -1615,7 +1960,8 @@ def main():
             f"hard={train_hard_ratio:.2f} rank={train_true_rank:.2f} "
             f"train_acc={train_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} "
-            f"{'** BEST' if is_best else ''} | "
+            f"{'** BEST_LOSS' if is_best_loss else ''}"
+            f"{' ** BEST_ACC' if is_best_acc else ''} | "
             f"lr={current_lr:.2e}  {elapsed:.1f}s"
         )
 
@@ -1624,6 +1970,7 @@ def main():
             "train_loss": round(train_loss, 6),
             "train_ce"  : round(train_ce, 6),
             "train_kd"  : round(train_kd, 6),
+            "train_center": round(train_center, 6),
             "train_relation": round(train_rel, 6),
             "train_embedding": round(train_emb, 6),
             "train_logit_kd": round(train_logit_kd, 6),
@@ -1655,17 +2002,18 @@ def main():
     # ── Final test evaluation ──
     logger.info("\n" + "=" * 70)
     logger.info(
-        f"  Training selesai. Best val_loss epoch={best_epoch} "
-        f"best_val_loss={best_val_loss:.6f} best_val_acc={best_val_acc:.4f}"
+        f"  Training selesai. Best val_loss epoch={best_loss_epoch} "
+        f"best_val_loss={best_val_loss:.6f} | best val_acc epoch={best_acc_epoch} "
+        f"best_val_acc={best_val_acc:.4f}"
     )
 
-    best_model_path = output_dir / "best_model.pth"
+    best_model_path = output_dir / "best_by_val_loss.pth"
     if best_model_path.exists():
-        logger.info("  Memuat best_model.pth untuk evaluasi test...")
+        logger.info("  Memuat best_by_val_loss.pth untuk evaluasi test...")
         best_state = torch.load(best_model_path, map_location=device)
         student.load_state_dict(best_state)
     else:
-        logger.info("  best_model.pth tidak ada (epochs=0) — evaluasi menggunakan weights yang sudah di-load.")
+        logger.info("  best_by_val_loss.pth tidak ada — evaluasi menggunakan weights yang sudah di-load.")
 
     test_results = None
     if not cfg.skip_test_evaluation:
@@ -1696,13 +2044,26 @@ def main():
     # ── Simpan hasil ──
     final_results = {
         "timestamp"    : datetime.now().isoformat(),
-        "best_epoch"   : best_epoch,
+        "best_epoch"   : best_loss_epoch,
+        "best_val_loss_epoch": best_loss_epoch,
+        "best_val_acc_epoch": best_acc_epoch,
         "best_val_loss": round(best_val_loss, 6),
         "best_val_acc" : round(best_val_acc, 4),
+        "best_screening_epoch": best_screening_epoch,
+        "best_screening_key": {
+            "validation_errors": int(best_screening[0]),
+            "validation_ce_loss": float(best_screening[1]),
+            "negative_true_class_margin": float(best_screening[2]),
+        },
         "initial_val_acc": round(initial_val_results["acc"], 4),
         "initial_val_loss": round(initial_val_results["loss"], 4),
         "initial_test_acc": None if initial_test_results is None else round(initial_test_results["acc"], 4),
         "initial_test_loss": None if initial_test_results is None else round(initial_test_results["loss"], 4),
+        "initial_student_checkpoint": str(output_dir / "initial_student.pth"),
+        "best_by_val_loss_checkpoint": str(output_dir / "best_by_val_loss.pth"),
+        "best_by_val_acc_checkpoint": str(output_dir / "best_by_val_acc.pth"),
+        "best_screening_checkpoint": str(output_dir / "best_screening.pth"),
+        "last_model_checkpoint": str(output_dir / "last_model.pth"),
         "test_acc"     : None if test_results is None else round(test_results["acc"], 4),
         "test_loss"    : None if test_results is None else round(test_results["loss"], 4),
         "test_auc"     : None if test_results is None else test_results.get("auc"),
@@ -1723,6 +2084,15 @@ def main():
             "kd_weight"  : round(1 - cfg.alpha, 2),
             "ce_weight"  : cfg.ce_weight,
             "relation_weight": cfg.relation_weight,
+            "center_weight": cfg.center_weight,
+            "feature_weight": cfg.feature_weight,
+            "center_scale": cfg.center_scale,
+            "center_margin": cfg.center_margin,
+            "relation_topk": cfg.relation_topk,
+            "relation_difference_threshold": cfg.relation_difference_threshold,
+            "adaptive_warmup_epochs": cfg.adaptive_warmup_epochs,
+            "teacher_center_cache": cfg.teacher_center_cache,
+            "initial_student_weights": cfg.initial_student_weights,
             "embedding_weight": cfg.embedding_weight,
             "logit_kd_weight": cfg.logit_kd_weight,
             "topk_k"     : cfg.topk_k,
@@ -1761,6 +2131,7 @@ def main():
             "epochs"     : cfg.epochs,
             "lr"         : cfg.lr,
         },
+        "provenance": provenance,
     }
     result_name = "screening_results.json" if cfg.skip_test_evaluation else "test_results.json"
     with open(output_dir / result_name, "w") as f:
