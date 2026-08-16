@@ -1,0 +1,12 @@
+{
+  "accuracy": 0.9976019184652278,
+  "precision": 0.9964028776978417,
+  "recall": 0.9976019184652278,
+  "f1_score": 0.9968025579536371,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.051486696515764506,
+  "num_test_samples": 834,
+  "model_name": "NAS-PDARTS",
+  "epoch": 300
+}
