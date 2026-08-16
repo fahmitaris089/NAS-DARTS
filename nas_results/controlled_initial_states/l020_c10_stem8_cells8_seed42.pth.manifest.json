@@ -1,0 +1,19 @@
+{
+  "state_sha256": "4ad3800bba843526406769b63dbbceb6391e04da171fff9a0a912a9f3798d491",
+  "config": "nas_results\\retrain_hwint8_l020_c10_stem8_robust_300e\\seed_42\\config.json",
+  "config_sha256": "34360667a8e6159e286eb29eece8a47f4cd51e546c297b5d168cc1ae3b8d4297",
+  "seed": 42,
+  "C_init": 10,
+  "num_cells": 8,
+  "stem_downsample": 8,
+  "reduction_indices": [
+    2,
+    5
+  ],
+  "num_classes": 834,
+  "compatible_config_sha256": [
+    "34360667a8e6159e286eb29eece8a47f4cd51e546c297b5d168cc1ae3b8d4297",
+    "869066e4e43ad67dd25f209b533d69d2e1688bc0e762441cb1a4c32250b404c4"
+  ],
+  "architecture_sha256": "5cd4151cd01fb327466b3125d53fc4cf7c00b9a34d59e8d48bee2e67ea37c668"
+}

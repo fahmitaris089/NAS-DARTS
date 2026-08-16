@@ -1,0 +1,25 @@
+{
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c10_arcface_stabilized_300e/seed_42",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c10_arcface_stabilized_300e/seed_42/model_benchmark_arcface.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c10_arcface_stabilized_300e/seed_42/model_benchmark_arcface_int8_static.onnx",
+  "calib_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/Eksperimen_Hardware_Aware_PDARTS/dataset/calibration",
+  "calibration_manifest": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c10_arcface_stabilized_300e/seed_42/model_benchmark_arcface_calibration_manifest_used.json",
+  "calibration_manifest_sha256": "8a18044f1b8822132a11add0d5d9604ff4f24fa6ce123fca304525c0968c0add",
+  "calibration_validation_mode": "independently_validated_against_training_split",
+  "calibration_source_split": "train",
+  "threads": 4,
+  "fp32_size_mb": 2.2228,
+  "int8_size_mb": 0.7736,
+  "fp32_4t_ms": 0.9521,
+  "int8_4t_ms": 1.3547,
+  "speedup_x": 0.7028,
+  "quant_recipe": {
+    "per_channel": true,
+    "quant_format": "QDQ",
+    "activation_type": "QUInt8",
+    "weight_type": "QInt8",
+    "quant_input_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c10_arcface_stabilized_300e/seed_42/model_benchmark_arcface_pre.onnx",
+    "quant_pre_process": true,
+    "num_calib_images": 200
+  }
+}

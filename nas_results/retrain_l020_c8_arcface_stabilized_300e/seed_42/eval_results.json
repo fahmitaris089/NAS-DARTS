@@ -1,0 +1,19 @@
+{
+  "accuracy": 0.9964028776978417,
+  "precision": 0.9946043165467626,
+  "recall": 0.9964028776978417,
+  "f1_score": 0.9952038369304557,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.05773867879595075,
+  "num_test_samples": 834,
+  "evaluated_split": "test",
+  "total_params": 397272,
+  "loss_mode": "arcface",
+  "evaluated_checkpoint": "nas_results\\retrain_l020_c8_arcface_stabilized_300e\\seed_42\\best_screening.pth",
+  "model_size_mb": 1.5401535034179688,
+  "flops": 40981376.0,
+  "flops_M": 40.981376,
+  "latency_gpu_ms": 8.227548599243164,
+  "latency_cpu_ms": 8.143548965454102
+}

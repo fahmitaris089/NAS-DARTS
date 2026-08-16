@@ -533,10 +533,57 @@ def main() -> None:
     manifest_entries = manifest.get("entries", [])
     if not manifest_entries or any(entry.get("source_split") != "train" for entry in manifest_entries):
         raise ValueError("Calibration manifest must contain only source_split=train entries")
-    allowed_names = {entry.get("filename") for entry in manifest_entries}
-    unverified = [path.name for path in calib_images if path.name not in allowed_names]
+    allowed_pairs = {
+        (str(entry.get("subject")), str(entry.get("filename")))
+        for entry in manifest_entries
+    }
+    actual_pairs = [(path.parent.name, path.name) for path in calib_images]
+    unverified = [pair for pair in actual_pairs if pair not in allowed_pairs]
+    validation_mode = "exact_source_manifest"
     if unverified:
-        raise ValueError(f"Calibration images absent from training-only manifest: {unverified[:10]}")
+        if eval_split_path is None or not eval_split_path.exists():
+            raise ValueError(
+                "Calibration images differ from the source manifest and the training "
+                f"split is unavailable for independent validation: {unverified[:10]}"
+            )
+        split_payload = load_json(eval_split_path)
+        training_pairs = {
+            (str(subject), str(filename))
+            for subject, filename in split_payload.get("train", [])
+        }
+        outside_train = [pair for pair in actual_pairs if pair not in training_pairs]
+        if outside_train:
+            raise ValueError(
+                "Calibration contains images outside the training split: "
+                f"{outside_train[:10]}"
+            )
+        validation_mode = "independently_validated_against_training_split"
+        print(
+            "  [info] Calibration selection differs from the source manifest; "
+            "all selected files were independently verified against split.train"
+        )
+
+    used_manifest_path = model_dir / f"{args.output_stem}_calibration_manifest_used.json"
+    used_manifest = {
+        "count": len(calib_images),
+        "source_split": "train",
+        "validation_mode": validation_mode,
+        "source_manifest": str(calibration_manifest),
+        "source_manifest_sha256": sha256_file(calibration_manifest),
+        "split_path": str(eval_split_path),
+        "split_sha256": sha256_file(eval_split_path),
+        "entries": [
+            {
+                "subject": subject,
+                "filename": path.name,
+                "relative_path": str(path.relative_to(calib_dir)),
+                "sha256": sha256_file(path),
+                "source_split": "train",
+            }
+            for path, (subject, _) in zip(calib_images, actual_pairs)
+        ],
+    }
+    save_json(used_manifest_path, used_manifest)
     print(f"  Calibration images: {len(calib_images)}")
 
     fp32_sess = make_session(fp32_path, args.threads)
@@ -589,8 +636,9 @@ def main() -> None:
         "fp32_size_mb" : round(fp32_size_mb, 4),
         "int8_size_mb" : round(int8_size_mb, 4),
         "backend"      : "onnxruntime",
-        "calibration_manifest": str(calibration_manifest),
-        "calibration_manifest_sha256": sha256_file(calibration_manifest),
+        "calibration_manifest": str(used_manifest_path),
+        "calibration_manifest_sha256": sha256_file(used_manifest_path),
+        "calibration_validation_mode": validation_mode,
         "calibration_source_split": "train",
         "calibration_images": len(calib_images),
         "test_previously_observed_acknowledged": bool(args.acknowledge_observed_test),
@@ -608,8 +656,9 @@ def main() -> None:
         "fp32_onnx": str(fp32_path),
         "int8_onnx": str(int8_path),
         "calib_dir": str(calib_dir),
-        "calibration_manifest": str(calibration_manifest),
-        "calibration_manifest_sha256": sha256_file(calibration_manifest),
+        "calibration_manifest": str(used_manifest_path),
+        "calibration_manifest_sha256": sha256_file(used_manifest_path),
+        "calibration_validation_mode": validation_mode,
         "calibration_source_split": "train",
         "threads": args.threads,
         "fp32_size_mb": round(fp32_size_mb, 4),

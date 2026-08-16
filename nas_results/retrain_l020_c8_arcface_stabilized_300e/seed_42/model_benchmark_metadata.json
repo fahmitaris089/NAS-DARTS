@@ -1,0 +1,33 @@
+{
+  "exported_at": "2026-08-16T07:36:08.800956",
+  "model_dir": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c8_arcface_stabilized_300e/seed_42",
+  "model_path": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c8_arcface_stabilized_300e/seed_42/best_screening.pth",
+  "fp32_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c8_arcface_stabilized_300e/seed_42/model_benchmark_arcface.onnx",
+  "int8_onnx": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c8_arcface_stabilized_300e/seed_42/model_benchmark_arcface_int8_static.onnx",
+  "input_size": 224,
+  "opset": 13,
+  "num_classes": 834,
+  "c_init": 8,
+  "num_cells": 8,
+  "stem_downsample": 8,
+  "reduction_indices": [
+    2,
+    5
+  ],
+  "auxiliary": false,
+  "fp32_size_mb": 1.529,
+  "int8_size_mb": 0.5947,
+  "backend": "onnxruntime",
+  "calibration_manifest": "/Users/fahmitaris/Downloads/NAS-DARTS/nas_results/retrain_l020_c8_arcface_stabilized_300e/seed_42/model_benchmark_arcface_calibration_manifest_used.json",
+  "calibration_manifest_sha256": "8a18044f1b8822132a11add0d5d9604ff4f24fa6ce123fca304525c0968c0add",
+  "calibration_validation_mode": "independently_validated_against_training_split",
+  "calibration_source_split": "train",
+  "calibration_images": 200,
+  "test_previously_observed_acknowledged": false,
+  "kd_config": {
+    "teacher_arch": null,
+    "temperature": null,
+    "alpha": null,
+    "epochs": 300
+  }
+}

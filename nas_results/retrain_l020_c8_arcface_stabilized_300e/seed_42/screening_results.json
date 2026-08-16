@@ -1,0 +1,18 @@
+{
+  "status": "screening_complete_test_not_evaluated",
+  "best_epoch": 212,
+  "best_validation_loss": 0.0024877030316463795,
+  "best_validation_accuracy": 0.9988009592326139,
+  "best_validation_accuracy_epoch": 166,
+  "best_checkpoint_true_class_margin": 29.792848426946918,
+  "maximum_validation_true_class_margin": 31.34633468152236,
+  "checkpoint_selection": "lexicographic_validation_errors_loss_margin",
+  "best_checkpoint": "nas_results\\retrain_l020_c8_arcface_stabilized_300e\\seed_42\\best_screening.pth",
+  "best_screening_epoch": 212,
+  "best_screening_key": {
+    "validation_errors": 1,
+    "validation_ce_loss": 0.0024877030316463795,
+    "negative_true_class_margin": -29.792848426946918
+  },
+  "loss_mode": "arcface"
+}
