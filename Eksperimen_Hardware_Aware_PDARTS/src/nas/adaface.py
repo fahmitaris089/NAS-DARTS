@@ -138,7 +138,12 @@ class ArcFaceHead(nn.Module):
         correction = math.sin(math.pi - margin) * margin
         target_margin = torch.where(target > threshold, phi, target - correction)
         output = cosine.clone()
-        output.scatter_(1, labels.view(-1, 1), target_margin)
+        # autocast may promote the trigonometric margin path to FP32 while the
+        # cosine tensor remains FP16/BF16. scatter_ requires an exact dtype
+        # match, so cast only the replacement values back to the output dtype.
+        output.scatter_(
+            1, labels.view(-1, 1), target_margin.to(dtype=output.dtype)
+        )
         return output * self.s
 
 

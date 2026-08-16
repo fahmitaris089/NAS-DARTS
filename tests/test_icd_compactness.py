@@ -8,6 +8,8 @@ sys.path.insert(0, str(ROOT / "knowledge_distilation"))
 
 from icd_compactness import ICDCompactnessLoss, SynchronizedClassFeatureBank
 
+from adaface import ArcFaceHead
+
 
 def test_feature_bank_replacement_and_validity_expiry():
     bank = SynchronizedClassFeatureBank(
@@ -97,3 +99,20 @@ def test_sdc_schedule_and_fcd_ablation_are_locked():
     assert before["icd_sdc_active"] == 0.0
     assert after["icd_sdc_active"] == 1.0
     assert ablation["icd_sdc_active"] == 0.0
+
+
+def test_arcface_margin_forward_is_autocast_dtype_safe():
+    head = ArcFaceHead(
+        embedding_size=8, classnum=4, m=0.5, s=64,
+        margin_warmup_epochs=1,
+    )
+    head.set_epoch(1)
+    embeddings = torch.randn(3, 8, requires_grad=True)
+    labels = torch.tensor([0, 1, 2])
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        logits = head(embeddings, labels)
+        loss = logits.float().sum()
+    assert logits.dtype == torch.bfloat16
+    assert torch.isfinite(logits.float()).all()
+    loss.backward()
+    assert embeddings.grad is not None and torch.isfinite(embeddings.grad).all()
