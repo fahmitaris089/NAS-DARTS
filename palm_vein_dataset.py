@@ -437,6 +437,7 @@ def create_retrain_dataloaders(
     pk_p=16,
     pk_k=4,
     seed=SEED,
+    include_test=True,
 ):
     """
     Create DataLoaders for retrain phase.
@@ -464,12 +465,20 @@ def create_retrain_dataloaders(
 
     train_samples = build_image_list(data_dir, split["train"], label_map)
     val_samples = build_image_list(data_dir, split["val"], label_map)
-    test_samples = build_image_list(data_dir, split["test"], label_map)
+    # Screening must not touch test image files. The split metadata remains
+    # available for provenance, but paths are resolved only for final testing.
+    test_samples = (
+        build_image_list(data_dir, split["test"], label_map) if include_test else []
+    )
 
     print(f"\nRetrain Dataset (same split as Teacher):")
     print(f"  Train : {len(train_samples)} images")
     print(f"  Val   : {len(val_samples)} images")
-    print(f"  Test  : {len(test_samples)} images")
+    print(
+        f"  Test  : {len(test_samples)} images"
+        if include_test else
+        f"  Test  : not-created ({len(split['test'])} entries declared in split metadata)"
+    )
     print(f"  Classes: {num_classes}")
     print(f"  Augment: {'ON' if use_augmentation else 'OFF'}")
     print(f"  Aug Policy: {augmentation_policy}")
@@ -484,7 +493,7 @@ def create_retrain_dataloaders(
 
     train_ds = PalmVeinDataset(train_samples, train_tf)
     val_ds = PalmVeinDataset(val_samples, eval_tf)
-    test_ds = PalmVeinDataset(test_samples, eval_tf)
+    test_ds = PalmVeinDataset(test_samples, eval_tf) if include_test else None
 
     if sampler_type == "random":
         train_loader = DataLoader(
@@ -514,17 +523,21 @@ def create_retrain_dataloaders(
         val_ds, batch_size=batch_size, shuffle=False,
         num_workers=num_workers, pin_memory=True,
     )
-    test_loader = DataLoader(
-        test_ds, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True,
-    )
+    test_loader = None
+    if test_ds is not None:
+        test_loader = DataLoader(
+            test_ds, batch_size=batch_size, shuffle=False,
+            num_workers=num_workers, pin_memory=True,
+        )
 
     info = {
         "num_classes": num_classes,
         "label_map": label_map,
         "train_size": len(train_samples),
         "val_size": len(val_samples),
-        "test_size": len(test_samples),
+        "test_size": len(test_samples) if include_test else None,
+        "test_declared_size": len(split["test"]),
+        "test_loader_created": bool(include_test),
         "sampler_type": sampler_type,
         "pk_p": pk_p if sampler_type == "pk" else None,
         "pk_k": pk_k if sampler_type == "pk" else None,

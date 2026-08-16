@@ -1,7 +1,7 @@
 """
-Knowledge Distillation Training — EfficientNet-V2-M → NAS Student
-=================================================================
-Teacher : EfficientNet-V2-M  (100% train acc, frozen)
+Knowledge Distillation Training — Frozen Teacher → NAS Student
+===============================================================
+Teacher : torchvision classifier or NAS EvalNetwork (frozen)
 Student : EvalNetwork (P-DARTS, C_init from student_config, params vary)
 Method  : Hinton KD  — KL divergence (soft) + CE (hard)
 
@@ -70,13 +70,14 @@ from kd_loss import (
     TopKDLoss,
 )
 from model_eval import EvalNetwork
-from adaface import replace_linear_with_adaface
+from adaface import replace_linear_with_adaface, replace_linear_with_arcface
 from palm_vein_dataset import PalmVeinDataset, create_retrain_dataloaders, get_transforms
 from torch.utils.data import DataLoader
 from adaptive_center_relation import (
     AdaptiveCenterRelationLoss, load_center_cache, save_center_cache,
     sha256_file, stable_json_hash,
 )
+from icd_compactness import ICDCompactnessLoss
 
 
 # ─── Seed ─────────────────────────────────────────────────────────────────────
@@ -119,13 +120,15 @@ def setup_logger(output_dir: Path) -> logging.Logger:
 # ─── Argparse (override KDConfig fields) ─────────────────────────────────────
 
 def parse_args(cfg: KDConfig) -> KDConfig:
-    parser = argparse.ArgumentParser(description="KD Training: EfficientNet-V2-M → NAS Student")
+    parser = argparse.ArgumentParser(description="KD Training: Frozen Teacher → NAS Student")
 
     parser.add_argument("--teacher_arch",      default=cfg.teacher_arch,
-                        help="Teacher architecture. Pilihan: efficientnet_v2_m, "
+                        help="Teacher architecture. Pilihan: nas_eval, efficientnet_v2_m, "
                              "efficientnet_b4, densenet121, inception_v3, resnet50, "
                              "convnext_base, regnet_y_16gf, mobilenet_v3_large, vgg16")
     parser.add_argument("--teacher_weights",   default=cfg.teacher_weights)
+    parser.add_argument("--teacher_config", default=cfg.teacher_config,
+                        help="NAS EvalNetwork config.json when --teacher_arch nas_eval")
     parser.add_argument("--teacher2_arch", default=cfg.teacher2_arch,
                         help="Second teacher architecture for conservative_multiteacher")
     parser.add_argument("--teacher2_weights", default=cfg.teacher2_weights,
@@ -147,9 +150,18 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                         choices=[
                             "hinton", "dkd", "pairwise", "embedding", "hybrid",
                             "hard_topk", "conservative", "conservative_multiteacher",
-                            "topkd", "adaptive_center_relation",
+                            "topkd", "adaptive_center_relation", "icd_compactness",
                         ],
                         help="KD loss method. 'hinton' preserves the original logit KD path.")
+    parser.add_argument("--icd_mode", choices=["fcd", "full"], default=cfg.icd_mode)
+    parser.add_argument("--icd_bank_size", type=int, default=cfg.icd_bank_size)
+    parser.add_argument("--icd_valid_steps", type=int, default=cfg.icd_valid_steps)
+    parser.add_argument("--icd_delta", type=float, default=cfg.icd_delta)
+    parser.add_argument("--icd_gamma", type=float, default=cfg.icd_gamma)
+    parser.add_argument("--icd_sdc_start_epoch", type=int, default=cfg.icd_sdc_start_epoch)
+    parser.add_argument("--icd_sdc_weight", type=float, default=cfg.icd_sdc_weight)
+    parser.add_argument("--icd_classification_weight", type=float,
+                        default=cfg.icd_classification_weight)
     parser.add_argument("--dkd_alpha", type=float, default=cfg.dkd_alpha,
                         help="Target-class DKD weight")
     parser.add_argument("--dkd_beta", type=float, default=cfg.dkd_beta,
@@ -321,6 +333,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     # Update cfg dengan nilai dari argparse
     cfg.teacher_arch        = args.teacher_arch
     cfg.teacher_weights     = args.teacher_weights
+    cfg.teacher_config      = args.teacher_config
     cfg.teacher2_arch       = args.teacher2_arch
     cfg.teacher2_weights    = args.teacher2_weights
     cfg.student_weights     = args.student_weights
@@ -330,6 +343,25 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.temperature         = args.temperature
     cfg.alpha               = args.alpha
     cfg.kd_method           = args.kd_method
+    cfg.icd_mode            = args.icd_mode
+    cfg.icd_bank_size       = args.icd_bank_size
+    cfg.icd_valid_steps     = args.icd_valid_steps
+    cfg.icd_delta           = args.icd_delta
+    cfg.icd_gamma           = args.icd_gamma
+    cfg.icd_sdc_start_epoch = args.icd_sdc_start_epoch
+    cfg.icd_sdc_weight      = args.icd_sdc_weight
+    cfg.icd_classification_weight = args.icd_classification_weight
+    if cfg.kd_method == "icd_compactness":
+        if cfg.teacher_arch != "nas_eval" or not cfg.teacher_config:
+            parser.error("icd_compactness requires --teacher_arch nas_eval and --teacher_config")
+        if min(cfg.icd_bank_size, cfg.icd_valid_steps) <= 0:
+            parser.error("ICD bank size and valid steps must be positive")
+        if not 0 < cfg.icd_delta <= 2 or cfg.icd_gamma <= 0:
+            parser.error("ICD delta must be in (0,2] and gamma must be positive")
+        if not 1 <= cfg.icd_sdc_start_epoch <= args.epochs:
+            parser.error("ICD SDC start epoch must be within the training budget")
+        if min(cfg.icd_sdc_weight, cfg.icd_classification_weight) < 0:
+            parser.error("ICD loss weights cannot be negative")
     cfg.dkd_alpha           = args.dkd_alpha
     cfg.dkd_beta            = args.dkd_beta
     cfg.dkd_warmup_epochs   = args.dkd_warmup_epochs
@@ -445,7 +477,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
         cfg.mix_prob        = args.mix_prob
         cfg.mix_switch_prob = args.mix_switch_prob
 
-    if cfg.kd_method in {"hard_topk", "conservative", "conservative_multiteacher", "topkd", "adaptive_center_relation"} and (cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0):
+    if cfg.kd_method in {"hard_topk", "conservative", "conservative_multiteacher", "topkd", "adaptive_center_relation", "icd_compactness"} and (cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0):
         print(
             f"WARNING: {cfg.kd_method} KD requires unmixed identity targets; "
             "forcing MixUp/CutMix off. Pass --no_mix to silence this warning."
@@ -474,6 +506,7 @@ _SUPPORTED_TEACHER_ARCHS = [
     "efficientnet_v2_m", "efficientnet_b4", "densenet121",
     "inception_v3", "resnet50", "convnext_base",
     "regnet_y_16gf", "mobilenet_v3_large", "mobilenet_v3_small", "vgg16",
+    "nas_eval",
 ]
 
 
@@ -577,6 +610,71 @@ def load_teacher(cfg: KDConfig, device: torch.device, logger: logging.Logger) ->
     """
     arch = _TEACHER_ARCH_ALIASES.get(cfg.teacher_arch, cfg.teacher_arch)
     logger.info(f"  Loading teacher: {arch}  weights={cfg.teacher_weights}")
+
+    if arch == "nas_eval":
+        if not cfg.teacher_config:
+            raise ValueError("--teacher_arch nas_eval requires --teacher_config")
+        teacher_config_path = Path(cfg.teacher_config)
+        if not teacher_config_path.exists():
+            raise FileNotFoundError(f"NAS teacher config not found: {teacher_config_path}")
+        with teacher_config_path.open("r", encoding="utf-8") as handle:
+            teacher_cfg = json.load(handle)
+        reduction_raw = teacher_cfg.get("reduction_indices")
+        if isinstance(reduction_raw, str):
+            reduction_indices = [
+                int(value.strip()) for value in reduction_raw.split(",") if value.strip()
+            ]
+        elif reduction_raw is None:
+            reduction_indices = None
+        else:
+            reduction_indices = [int(value) for value in reduction_raw]
+        teacher = EvalNetwork(
+            genotype=dict_to_genotype(teacher_cfg["genotype"]),
+            C_init=int(teacher_cfg["C_init"]),
+            num_cells=int(teacher_cfg["num_cells"]),
+            num_classes=cfg.num_classes,
+            auxiliary=False,
+            dropout=float(teacher_cfg.get("student_dropout", 0.3)),
+            stem_downsample=int(teacher_cfg.get("stem_downsample", 8)),
+            reduction_indices=reduction_indices,
+        )
+        loss_mode = teacher_cfg.get("loss_mode", "ce")
+        if loss_mode not in {"arcface", "subcenter_arcface"}:
+            raise ValueError(
+                "ICD NAS teacher must use an ArcFace-compatible checkpoint; "
+                f"config loss_mode={loss_mode!r}"
+            )
+        replace_linear_with_arcface(
+            teacher,
+            num_classes=cfg.num_classes,
+            m=float(teacher_cfg.get("arcface_margin", 0.5)),
+            s=float(teacher_cfg.get("arcface_scale", 64.0)),
+            num_subcenters=int(teacher_cfg.get(
+                "arcface_subcenters", 2 if loss_mode == "subcenter_arcface" else 1
+            )),
+            margin_warmup_epochs=int(teacher_cfg.get("arcface_margin_warmup_epochs", 0)),
+        )
+        state_dict = torch.load(cfg.teacher_weights, map_location="cpu", weights_only=False)
+        if isinstance(state_dict, dict) and "student" in state_dict:
+            state_dict = state_dict["student"]
+        state_dict = {
+            key: value for key, value in state_dict.items()
+            if not key.startswith("_auxiliary_head")
+        }
+        missing, unexpected = teacher.load_state_dict(state_dict, strict=False)
+        material_missing = [key for key in missing if not key.startswith("_auxiliary_head")]
+        if material_missing or unexpected:
+            raise RuntimeError(
+                "NAS teacher checkpoint/config mismatch; "
+                f"missing={material_missing[:10]} unexpected={unexpected[:10]}"
+            )
+        cfg.teacher_arch = arch
+        teacher.to(device).eval()
+        for parameter in teacher.parameters():
+            parameter.requires_grad_(False)
+        n_params = sum(parameter.numel() for parameter in teacher.parameters()) / 1e6
+        logger.info(f"  NAS ArcFace teacher loaded: {n_params:.3f}M params | FROZEN")
+        return teacher
 
     if arch == "efficientnet_v2_m":
         teacher = tv_models.efficientnet_v2_m(weights=None)
@@ -684,10 +782,15 @@ def _find_final_linear(module: nn.Module) -> nn.Linear:
 
 
 def get_teacher_embedding_dim(teacher: nn.Module) -> int:
+    classifier = getattr(teacher, "classifier", None)
+    if hasattr(classifier, "embedding_size"):
+        return int(classifier.embedding_size)
     return int(_find_final_linear(teacher).in_features)
 
 
 def get_student_embedding_dim(student: nn.Module) -> int:
+    if hasattr(student.classifier, "embedding_size"):
+        return int(student.classifier.embedding_size)
     return int(student.classifier.in_features)
 
 
@@ -701,7 +804,9 @@ def teacher_forward_with_embeddings(
     Captures the input to the final Linear layer, so it works across supported
     EfficientNet/ResNet/ConvNeXt/DenseNet-style classifiers.
     """
-    del arch  # Arch is kept in the interface for logging/debug extension points.
+    arch = _TEACHER_ARCH_ALIASES.get(arch, arch)
+    if arch == "nas_eval":
+        return teacher.forward_with_embeddings(images)
     final_linear = _find_final_linear(teacher)
     captured: dict[str, torch.Tensor] = {}
 
@@ -823,7 +928,24 @@ def load_student(cfg: KDConfig, device: torch.device, logger: logging.Logger) ->
         stem_downsample   = stem_downsample,
         reduction_indices = reduction_indices,
     )
-    use_adaface = bool(cfg.adaface or retrain_cfg.get("loss_mode") == "adaface")
+    loss_mode = retrain_cfg.get("loss_mode", "ce")
+    cfg.student_loss_mode = loss_mode
+    use_adaface = bool(cfg.adaface or loss_mode == "adaface")
+    use_arcface = loss_mode in {"arcface", "subcenter_arcface"}
+
+    # Controlled initial states were created with the original Linear head.
+    # Load them before replacing the classifier so its weight initializes the
+    # ArcFace/AdaFace head exactly as in retrain.py.
+    initial_loaded_before_margin_head = False
+    if cfg.no_pretrained_student and cfg.initial_student_weights:
+        state_dict = torch.load(
+            cfg.initial_student_weights, map_location="cpu", weights_only=False
+        )
+        if isinstance(state_dict, dict) and "student" in state_dict:
+            state_dict = state_dict["student"]
+        student.load_state_dict(state_dict, strict=True)
+        initial_loaded_before_margin_head = True
+
     if use_adaface:
         replace_linear_with_adaface(
             student, num_classes=cfg.num_classes,
@@ -834,19 +956,33 @@ def load_student(cfg: KDConfig, device: torch.device, logger: logging.Logger) ->
         )
         cfg.adaface = True
         logger.info("  Student head: AdaFace (margin training; cosine inference logits)")
+    elif use_arcface:
+        replace_linear_with_arcface(
+            student,
+            num_classes=cfg.num_classes,
+            m=float(retrain_cfg.get("arcface_margin", 0.5)),
+            s=float(retrain_cfg.get("arcface_scale", 64.0)),
+            num_subcenters=int(retrain_cfg.get(
+                "arcface_subcenters", 2 if loss_mode == "subcenter_arcface" else 1
+            )),
+            margin_warmup_epochs=int(retrain_cfg.get("arcface_margin_warmup_epochs", 20)),
+            subcenter_init_epsilon=float(retrain_cfg.get("subcenter_init_epsilon", 1e-3)),
+        )
+        logger.info(
+            f"  Student head: {loss_mode} "
+            "(margin training; cosine inference logits)"
+        )
 
     if cfg.no_pretrained_student:
-        if cfg.initial_student_weights:
-            state_dict = torch.load(cfg.initial_student_weights, map_location="cpu", weights_only=False)
-            if isinstance(state_dict, dict) and "student" in state_dict:
-                state_dict = state_dict["student"]
-            student.load_state_dict(state_dict, strict=True)
+        if initial_loaded_before_margin_head:
             logger.info(f"  Student: common initial state {cfg.initial_student_weights}")
         else:
             logger.info("  Student: random initialization (from scratch, --no_pretrained_student)")
     else:
         logger.info(f"  Loading student weights: {cfg.student_weights}")
-        state_dict = torch.load(cfg.student_weights, map_location="cpu")
+        state_dict = torch.load(cfg.student_weights, map_location="cpu", weights_only=False)
+        if isinstance(state_dict, dict) and "student" in state_dict:
+            state_dict = state_dict["student"]
 
         # strict=False karena checkpoint mungkin punya kunci _auxiliary_head.*
         # yang tidak ada di student dengan auxiliary=False
@@ -1078,7 +1214,8 @@ def train_one_epoch(
         "weighted_center", "weighted_feature", "weighted_relation",
         "center_weight_effective", "feature_weight_effective", "relation_weight_effective",
         "grad_norm_ce", "grad_norm_center", "grad_norm_feature", "grad_norm_relation",
-        "adaptive_stage",
+        "adaptive_stage", "icd_sdc_active", "icd_positive_pairs",
+        "icd_bank_occupancy", "icd_true_class_margin",
     )
     progressive_totals = {key: 0.0 for key in diagnostic_keys}
     correct = n_samples = 0
@@ -1107,6 +1244,13 @@ def train_one_epoch(
                         raise RuntimeError("conservative_multiteacher KD requires teacher2")
                     logits_teacher2 = teacher2(mixed_images)
                 teacher_embeddings = None
+            elif cfg.kd_method == "icd_compactness":
+                if is_mixed:
+                    raise RuntimeError("ICD compactness distillation requires unmixed labels")
+                _, teacher_embeddings = teacher_forward_with_embeddings(
+                    teacher, cfg.teacher_arch, mixed_images
+                )
+                logits_teacher = None
             elif cfg.kd_method == "adaptive_center_relation":
                 if is_mixed:
                     raise RuntimeError("Adaptive center-relation distillation requires unmixed labels")
@@ -1185,6 +1329,20 @@ def train_one_epoch(
                     logits_student=logits_student,
                     logits_teacher=logits_teacher,
                     targets=targets,
+                )
+            elif cfg.kd_method == "icd_compactness":
+                if hasattr(student.classifier, "set_epoch"):
+                    student.classifier.set_epoch(epoch)
+                logits_student, classification_logits, student_embeddings = (
+                    student.forward_adaface(mixed_images, targets)
+                )
+                loss, breakdown = criterion(
+                    inference_logits=logits_student,
+                    classification_logits=classification_logits,
+                    student_embeddings=student_embeddings,
+                    teacher_embeddings=teacher_embeddings,
+                    targets=targets,
+                    epoch=epoch,
                 )
             else:
                 logits_student, student_embeddings = student.forward_with_embeddings(mixed_images)
@@ -1563,12 +1721,16 @@ def main():
         pk_p             = cfg.pk_p,
         pk_k             = cfg.pk_k,
         seed             = cfg.seed,
+        include_test     = not cfg.skip_test_evaluation,
     )
     logger.info(
         f"  Train batches: {len(train_loader)}  |  "
         f"Val batches: {len(val_loader)}  |  "
-        f"Test batches: {len(test_loader)}"
+        f"Test batches: {len(test_loader) if test_loader is not None else 'not-created'}"
     )
+    cfg.test_loader_created = bool(_ds_info.get("test_loader_created", test_loader is not None))
+    if cfg.skip_test_evaluation and cfg.test_loader_created:
+        raise RuntimeError("Screening protocol requested no test evaluation, but a test loader was created")
     if cfg.train_sampler == "pk":
         logger.info(
             f"  Train sampler: PK  P={cfg.pk_p}  K={cfg.pk_k}  "
@@ -1583,10 +1745,23 @@ def main():
         teacher = None
         logger.info("  Teacher: skipped (epochs=0, evaluation only)")
     student = load_student(cfg, device, logger)
-    if cfg.kd_method == "adaptive_center_relation":
-        if int(student.classifier.out_features) != int(_ds_info["num_classes"]):
+    if cfg.kd_method == "icd_compactness" and getattr(cfg, "student_loss_mode", None) != "arcface":
+        raise ValueError(
+            "icd_compactness is locked to the C10 ArcFace student; "
+            f"student loss_mode={getattr(cfg, 'student_loss_mode', None)!r}"
+        )
+    if cfg.kd_method in {"adaptive_center_relation", "icd_compactness"}:
+        student_classes = getattr(
+            student.classifier, "out_features",
+            getattr(student.classifier, "classnum", None),
+        )
+        teacher_classes = getattr(
+            getattr(teacher, "classifier", None), "out_features",
+            getattr(getattr(teacher, "classifier", None), "classnum", None),
+        )
+        if int(student_classes) != int(_ds_info["num_classes"]):
             raise ValueError("Student classifier and dataset label-map class count differ")
-        if teacher is not None and int(_find_final_linear(teacher).out_features) != int(_ds_info["num_classes"]):
+        if teacher is not None and int(teacher_classes) != int(_ds_info["num_classes"]):
             raise ValueError("Teacher classifier and dataset label-map class count differ")
         logger.info(
             "  Label-map compatibility: class dimensions match configured split. "
@@ -1609,7 +1784,9 @@ def main():
     # ── Initial evaluation before any KD update ──
     logger.info("  Evaluasi initial student sebelum KD...")
     initial_val_results = evaluate(student, val_loader, device)
-    initial_test_results = None if cfg.skip_test_evaluation else evaluate(student, test_loader, device)
+    initial_test_results = (
+        None if test_loader is None else evaluate(student, test_loader, device)
+    )
     logger.info(
         f"  Initial VAL  : acc={initial_val_results['acc']*100:.2f}% "
         f"loss={initial_val_results['loss']:.4f}"
@@ -1739,6 +1916,28 @@ def main():
             f"contrast={cfg.topkd_contrast_weight} scale={cfg.topkd_scale} "
             f"T={topkd_temperature} include_gt={cfg.topkd_include_gt}"
         )
+    elif cfg.kd_method == "icd_compactness":
+        criterion = ICDCompactnessLoss(
+            student_dim=get_student_embedding_dim(student),
+            teacher_dim=get_teacher_embedding_dim(teacher),
+            num_classes=cfg.num_classes,
+            mode=cfg.icd_mode,
+            bank_size=cfg.icd_bank_size,
+            valid_steps=cfg.icd_valid_steps,
+            delta=cfg.icd_delta,
+            gamma=cfg.icd_gamma,
+            sdc_start_epoch=cfg.icd_sdc_start_epoch,
+            sdc_weight=cfg.icd_sdc_weight,
+            classification_weight=cfg.icd_classification_weight,
+        ).to(device)
+        logger.info(
+            f"  Loss: {criterion.method_label}; mode={cfg.icd_mode}; "
+            f"bank={cfg.icd_bank_size}; valid_steps={cfg.icd_valid_steps}; "
+            f"delta={cfg.icd_delta}; gamma={cfg.icd_gamma}; "
+            f"SDC start={cfg.icd_sdc_start_epoch}; "
+            f"weights FCD=1 SDC={cfg.icd_sdc_weight} "
+            f"ArcFace={cfg.icd_classification_weight}"
+        )
     elif cfg.kd_method == "adaptive_center_relation":
         centers, center_metadata = prepare_teacher_center_bank(
             teacher, train_loader.dataset.samples, cfg, device, logger,
@@ -1807,6 +2006,9 @@ def main():
 
     provenance = {
         "teacher_sha256": sha256_file(cfg.teacher_weights),
+        "teacher_config_sha256": (
+            sha256_file(cfg.teacher_config) if cfg.teacher_config else None
+        ),
         "student_config_sha256": sha256_file(cfg.student_config_path),
         "split_sha256": sha256_file(cfg.split_path),
         "initial_student_sha256": (
@@ -1817,7 +2019,8 @@ def main():
         "method_label": getattr(criterion, "method_label", cfg.kd_method),
         "label_map_compatibility": (
             "class_dimension_plus_supplied_split; teacher checkpoint lacks embedded label-map hash"
-            if cfg.kd_method == "adaptive_center_relation" else "not_audited_by_this_method"
+            if cfg.kd_method in {"adaptive_center_relation", "icd_compactness"}
+            else "not_audited_by_this_method"
         ),
         "continuation_type": cfg.continuation_type,
         "continuation_source_epoch": cfg.continuation_source_epoch,
@@ -1905,6 +2108,8 @@ def main():
         "weighted_relation", "center_weight_effective", "feature_weight_effective",
         "relation_weight_effective", "grad_norm_ce", "grad_norm_center",
         "grad_norm_feature", "grad_norm_relation", "adaptive_stage",
+        "icd_sdc_active", "icd_positive_pairs", "icd_bank_occupancy",
+        "icd_true_class_margin",
         "train_acc", "val_loss", "val_acc", "lr", "time_s", "val_true_class_margin",
     ]
     with open(csv_path, csv_mode, newline="") as f:
@@ -2029,6 +2234,9 @@ def main():
             f"{progressive_metrics['grad_norm_center']:.3g}/"
             f"{progressive_metrics['grad_norm_feature']:.3g}/"
             f"{progressive_metrics['grad_norm_relation']:.3g} "
+            f"icd(active/pairs/bank)={progressive_metrics['icd_sdc_active']:.2f}/"
+            f"{progressive_metrics['icd_positive_pairs']:.1f}/"
+            f"{progressive_metrics['icd_bank_occupancy']:.3f} "
             f"train_acc={train_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} "
             f"{'** BEST_LOSS' if is_best_loss else ''}"
@@ -2143,6 +2351,7 @@ def main():
         "kd_config"    : {
             "teacher"    : cfg.teacher_arch,
             "teacher_weights": cfg.teacher_weights,
+            "teacher_config": cfg.teacher_config,
             "teacher2"   : cfg.teacher2_arch,
             "teacher2_weights": cfg.teacher2_weights,
             "kd_method"  : cfg.kd_method,
@@ -2163,6 +2372,14 @@ def main():
             "relation_topk": cfg.relation_topk,
             "relation_difference_threshold": cfg.relation_difference_threshold,
             "adaptive_warmup_epochs": cfg.adaptive_warmup_epochs,
+            "icd_mode": cfg.icd_mode,
+            "icd_bank_size": cfg.icd_bank_size,
+            "icd_valid_steps": cfg.icd_valid_steps,
+            "icd_delta": cfg.icd_delta,
+            "icd_gamma": cfg.icd_gamma,
+            "icd_sdc_start_epoch": cfg.icd_sdc_start_epoch,
+            "icd_sdc_weight": cfg.icd_sdc_weight,
+            "icd_classification_weight": cfg.icd_classification_weight,
             "teacher_center_cache": cfg.teacher_center_cache,
             "initial_student_weights": cfg.initial_student_weights,
             "embedding_weight": cfg.embedding_weight,

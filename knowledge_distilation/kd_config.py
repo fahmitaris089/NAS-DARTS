@@ -4,13 +4,9 @@ Knowledge Distillation Configuration
 Semua hyperparameter KD dipusatkan di sini.
 Edit nilai-nilai ini sebelum menjalankan kd_train.py.
 
-Metode yang dipakai: Hinton KD (2015)
-  Loss = alpha * CE(logits_student, hard_labels)
-       + (1-alpha) * T^2 * KL(softmax(logits_student/T) || softmax(logits_teacher/T))
-
-  - alpha   : bobot CE (hard target)  vs KD (soft target)
-  - T       : temperature — makin besar, distribusi teacher makin "lembut"
-              sehingga informasi inter-class lebih banyak ditransfer
+Konfigurasi ini mendukung beberapa metode KD. Hinton KD tetap menjadi default;
+metode khusus seperti DKD, adaptive center-relation, dan ICD compactness harus
+dipilih secara eksplisit melalui --kd_method beserta argumen terkait.
 """
 
 from dataclasses import dataclass, field
@@ -28,6 +24,7 @@ class KDConfig:
     teacher_arch: str = "efficientnet_v2_m"
     # Path ke best_model.pth teacher (state_dict langsung)
     teacher_weights: str = str(_HERE / "best_model.pth")
+    teacher_config: str = ""
     teacher2_arch: str = "mobilenet_v3_small"
     teacher2_weights: str = str(_STUDENT_DIR / "Teacher" / "training_results" / "MobileNetV3Small" / "best_model.pth")
 
@@ -82,6 +79,14 @@ class KDConfig:
     # Method: "hinton" preserves the original logit KD path. "pairwise",
     # "embedding", and "hybrid" use biometric embedding/relation KD.
     kd_method: str = "hinton"
+    icd_mode: str = "full"
+    icd_bank_size: int = 5
+    icd_valid_steps: int = 200
+    icd_delta: float = 0.001
+    icd_gamma: float = 50.0
+    icd_sdc_start_epoch: int = 76
+    icd_sdc_weight: float = 0.5
+    icd_classification_weight: float = 0.1
     dkd_alpha: float = 1.0
     dkd_beta: float = 8.0
     dkd_warmup_epochs: int = 20
@@ -246,6 +251,15 @@ def print_config(cfg: KDConfig) -> None:
             f"                    negative_topk={cfg.relation_topk} "
             f"difference_threshold={cfg.relation_difference_threshold} "
             f"warmup={cfg.adaptive_warmup_epochs}"
+        )
+    if cfg.kd_method == "icd_compactness":
+        print(
+            f"  ICD compactness : mode={cfg.icd_mode} bank={cfg.icd_bank_size} "
+            f"valid_steps={cfg.icd_valid_steps} delta={cfg.icd_delta} gamma={cfg.icd_gamma}"
+        )
+        print(
+            f"                    SDC start={cfg.icd_sdc_start_epoch} "
+            f"SDC weight={cfg.icd_sdc_weight} ArcFace weight={cfg.icd_classification_weight}"
         )
     print()
     print(f"  Epochs          : {cfg.epochs}")
