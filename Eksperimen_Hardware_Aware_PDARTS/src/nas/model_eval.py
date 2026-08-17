@@ -141,7 +141,8 @@ class EvalNetwork(nn.Module):
 
     def __init__(self, genotype, C_init, num_cells, num_classes,
                  auxiliary=False, dropout=0.3,
-                 stem_downsample=2, reduction_indices=None):
+                 stem_downsample=2, reduction_indices=None,
+                 stem_pool="max"):
         """
         Args:
             genotype:        Genotype namedtuple
@@ -162,13 +163,16 @@ class EvalNetwork(nn.Module):
         self._auxiliary_head = None
         self.drop_path_prob = 0.0
         self.stem_downsample = stem_downsample
+        if stem_pool not in {"max", "avg"}:
+            raise ValueError("stem_pool must be 'max' or 'avg'")
+        self.stem_pool = stem_pool
         self.reduction_indices = reduction_indices
 
         C_curr = C_init * 3  # stem output
 
         # Stem: first stride-2 conv, then a stride-2 max-pool for each *extra*
         # downsample step. stem_downsample=2 → single conv (224→112), identical to
-        # the original stem. stem_downsample=4 → conv(224→112)+maxpool(112→56);
+        # the original stem. stem_downsample=4 → conv(224→112)+pool(112→56);
         # the extra downsample carries no parameters (matches the trained models).
         n_down = max(1, int(stem_downsample).bit_length() - 1)  # 2→1, 4→2, 8→3
         stem_layers = [
@@ -176,7 +180,10 @@ class EvalNetwork(nn.Module):
             nn.BatchNorm2d(C_curr),
         ]
         for _ in range(n_down - 1):
-            stem_layers.append(nn.MaxPool2d(3, stride=2, padding=1))
+            if stem_pool == "avg":
+                stem_layers.append(nn.AvgPool2d(3, stride=2, padding=1))
+            else:
+                stem_layers.append(nn.MaxPool2d(3, stride=2, padding=1))
         self.stem = nn.Sequential(*stem_layers)
 
         # Reduction cell positions

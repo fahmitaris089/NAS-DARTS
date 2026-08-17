@@ -12,12 +12,14 @@ import torch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT.parent))
 
 from src.common import load_json, save_json, select_device, set_seed, sha256_file
 from src.data.dataset import build_dataloaders, load_dataset_config, validate_dataset
 from src.models import MODEL_NAMES, build_model, count_parameters
 from src.models.factory import PRETRAINED_MODELS
 from src.training.engine import run_training
+from palm_input_preprocessing import input_profile_metadata
 
 
 def parse_args():
@@ -85,6 +87,10 @@ def main():
         "parameters": count_parameters(model),
         "split_sha256": validation["split_sha256"],
         "dataset_config_sha256": sha256_file(dataset_config["config_path"]),
+        "input_profile": protocol.get("input_profile", dataset_config.get("input_profile", "legacy")),
+        "input_profile_metadata": input_profile_metadata(
+            protocol.get("input_profile", dataset_config.get("input_profile", "legacy"))
+        ),
     }
     if hasattr(model, "reconstruction_metadata"):
         metadata["architecture_reconstruction"] = model.reconstruction_metadata()

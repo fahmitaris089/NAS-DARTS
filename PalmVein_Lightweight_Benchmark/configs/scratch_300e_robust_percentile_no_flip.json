@@ -1,0 +1,27 @@
+{
+  "protocol": "scratch",
+  "experiment_name": "scratch_robust_percentile_no_flip_300e",
+  "epochs": 300,
+  "seeds": [42, 123, 2026],
+  "optimizer": "AdamW",
+  "learning_rate": 0.001,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "warmup_start_factor": 0.01,
+  "minimum_learning_rate": 0.000001,
+  "batch_size": 64,
+  "label_smoothing": 0.2,
+  "gradient_clip_norm": 1.0,
+  "num_workers": 4,
+  "input_profile": "robust_percentile_v1",
+  "augmentation": {
+    "horizontal_flip": false,
+    "rotation_degrees": 10,
+    "translate": 0.05,
+    "scale": [0.90, 1.10],
+    "brightness": 0.15,
+    "contrast": 0.10
+  },
+  "checkpoint_selection": "minimum_validation_loss",
+  "evaluate_test_once": true
+}

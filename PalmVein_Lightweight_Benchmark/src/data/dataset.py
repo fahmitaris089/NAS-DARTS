@@ -11,6 +11,14 @@ from torchvision import transforms
 
 from src.common import PROJECT_ROOT, resolve_project_path, sha256_file
 
+import sys
+
+REPOSITORY_ROOT = PROJECT_ROOT.parent
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from palm_input_preprocessing import ApplyInputProfile  # noqa: E402
+
 
 class GrayscaleToRGB:
     def __call__(self, tensor):
@@ -81,7 +89,9 @@ def build_samples(data_dir: str | Path, items: list[list[str]], label_map: dict[
 
 def build_transforms(config: dict[str, Any], protocol: dict[str, Any], training: bool):
     size = int(config["input_size"])
+    input_profile = str(protocol.get("input_profile", config.get("input_profile", "legacy")))
     tail = [
+        ApplyInputProfile(input_profile),
         transforms.ToTensor(),
         GrayscaleToRGB(),
         transforms.Normalize(config["imagenet_mean"], config["imagenet_std"]),
@@ -116,7 +126,7 @@ def worker_seed(worker_id: int) -> None:
     random.seed(seed)
 
 
-def build_dataloaders(dataset_config: dict[str, Any], protocol: dict[str, Any], seed: int, *, batch_size: int | None = None, num_workers: int | None = None):
+def build_dataloaders(dataset_config: dict[str, Any], protocol: dict[str, Any], seed: int, *, batch_size: int | None = None, num_workers: int | None = None, include_test: bool = True):
     import torch
 
     split = load_split(dataset_config["split_path"])
@@ -130,7 +140,8 @@ def build_dataloaders(dataset_config: dict[str, Any], protocol: dict[str, Any], 
         "generator": generator,
     }
     loaders = {}
-    for name in ("train", "val", "test"):
+    names = ("train", "val", "test") if include_test else ("train", "val")
+    for name in names:
         samples = build_samples(dataset_config["data_dir"], split[name], label_map)
         dataset = PalmVeinDataset(samples, build_transforms(dataset_config, protocol, name == "train"))
         loaders[name] = DataLoader(dataset, shuffle=name == "train", drop_last=False, **common)

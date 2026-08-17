@@ -51,12 +51,18 @@ except ImportError as e:
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY_ROOT = PROJECT_ROOT.parent
+sys.path.insert(0, str(REPOSITORY_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "nas"))
 
 from genotypes import dict_to_genotype
 from model_eval import EvalNetwork
 from adaface import replace_linear_with_adaface, replace_linear_with_arcface
 from operations import fuse_reparam_model
+from palm_input_preprocessing import (
+    input_profile_metadata,
+    preprocess_path_to_imagenet_bchw,
+    validate_input_profile,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -78,6 +84,17 @@ def save_json(path: Path, data: dict):
     with path.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     print(f"  ✓ Saved: {path.name}")
+
+
+def annotate_onnx_metadata(path: Path, properties: dict[str, object]) -> None:
+    """Persist deployment-critical external preprocessing metadata in ONNX."""
+    import onnx
+
+    model = onnx.load(str(path))
+    existing = {item.key: item.value for item in model.metadata_props}
+    existing.update({key: str(value) for key, value in properties.items()})
+    onnx.helper.set_model_props(model, existing)
+    onnx.save(model, str(path))
 
 
 def sha256_file(path: Path) -> str:
@@ -122,11 +139,13 @@ def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwor
     num_classes = int(kd_cfg.get("num_classes", 834))
     dropout   = float(kd_cfg.get("student_dropout", 0.3))
     stem_downsample = int(student_cfg.get("stem_downsample", 2))
+    stem_pool = str(student_cfg.get("stem_pool", "max"))
     reduction_indices = parse_reduction_indices(student_cfg.get("reduction_indices"))
 
     print(f"  Architecture : C_init={c_init}, num_cells={num_cells}, "
           f"num_classes={num_classes}, auxiliary=False, dropout={dropout}, "
-          f"stem_downsample={stem_downsample}, reduction_indices={reduction_indices}")
+          f"stem_downsample={stem_downsample}, stem_pool={stem_pool}, "
+          f"reduction_indices={reduction_indices}")
 
     model = EvalNetwork(
         genotype          = genotype,
@@ -136,6 +155,7 @@ def build_model(kd_cfg: dict, student_cfg: dict, model_path: Path) -> EvalNetwor
         auxiliary         = False,   # KD selalu auxiliary=False
         dropout           = dropout,
         stem_downsample   = stem_downsample,
+        stem_pool         = stem_pool,
         reduction_indices = reduction_indices,
     )
 
@@ -219,18 +239,15 @@ def export_onnx_fp32(
 # Step 3: INT8 Static Quantization
 # ─────────────────────────────────────────────────────────────────────────────
 
-def preprocess_bmp(path: Path, input_size: int = 224) -> np.ndarray:
+def preprocess_bmp(
+    path: Path,
+    input_size: int = 224,
+    input_profile: str = "legacy",
+) -> np.ndarray:
     """BMP grayscale -> normalized RGB tensor BCHW float32."""
-    img = Image.open(path).convert("L").resize((input_size, input_size), Image.BILINEAR)
-    arr = np.asarray(img, dtype=np.float32) / 255.0
-
-    # GrayscaleToRGB + ImageNet normalization
-    rgb = np.stack([arr, arr, arr], axis=0)
-    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(3, 1, 1)
-    std = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(3, 1, 1)
-    rgb = (rgb - mean) / std
-
-    return np.expand_dims(rgb.astype(np.float32), axis=0)
+    return preprocess_path_to_imagenet_bchw(
+        str(path), input_size=input_size, profile=input_profile,
+    )
 
 
 def collect_calibration_images(calib_dir: Path, limit: int) -> List[Path]:
@@ -259,10 +276,18 @@ def ensure_min_opset(fp32_path: Path, min_opset: int = 13) -> Path:
 
 
 class PalmVeinCalibrationReader(CalibrationDataReader):
-    def __init__(self, image_paths: List[Path], input_name: str, input_size: int):
+    def __init__(
+        self,
+        image_paths: List[Path],
+        input_name: str,
+        input_size: int,
+        input_profile: str,
+    ):
         self.input_name = input_name
         self.input_size = input_size
-        self._data = [preprocess_bmp(p, input_size) for p in image_paths]
+        self._data = [
+            preprocess_bmp(p, input_size, input_profile) for p in image_paths
+        ]
         self._idx = 0
 
     def get_next(self):
@@ -279,6 +304,7 @@ def quantize_to_int8(
     calib_images: List[Path],
     input_name: str,
     input_size: int,
+    input_profile: str,
 ) -> dict:
     """Static INT8 quantization dengan per-channel QDQ."""
     
@@ -296,7 +322,9 @@ def quantize_to_int8(
         print(f"  [pre] Quant pre-process skipped ({exc})")
 
     # 3. Quantize
-    reader = PalmVeinCalibrationReader(calib_images, input_name, input_size)
+    reader = PalmVeinCalibrationReader(
+        calib_images, input_name, input_size, input_profile,
+    )
     quantize_static(
         model_input=str(quant_input_path),
         model_output=str(int8_path),
@@ -318,6 +346,8 @@ def quantize_to_int8(
         "quant_input_onnx": str(quant_input_path),
         "quant_pre_process": quant_input_path.name.endswith("_pre.onnx"),
         "num_calib_images": len(calib_images),
+        "input_profile": input_profile,
+        "input_profile_metadata": input_profile_metadata(input_profile),
     }
 
 
@@ -358,6 +388,67 @@ def benchmark_onnx(model_path: Path, input_size: int, threads: int, warmup: int,
     }
 
 
+@torch.inference_mode()
+def verify_torch_onnx_parity(
+    model: nn.Module,
+    onnx_path: Path,
+    arrays: list[np.ndarray],
+    threads: int,
+) -> dict:
+    session = make_session(onnx_path, threads)
+    input_name = session.get_inputs()[0].name
+    max_abs_error = 0.0
+    mean_abs_errors = []
+    top1_matches = 0
+    for array in arrays:
+        torch_logits = model(torch.from_numpy(array)).detach().cpu().numpy()
+        onnx_logits = np.asarray(session.run(None, {input_name: array})[0])
+        difference = np.abs(torch_logits - onnx_logits)
+        max_abs_error = max(max_abs_error, float(difference.max()))
+        mean_abs_errors.append(float(difference.mean()))
+        top1_matches += int(
+            np.array_equal(torch_logits.argmax(1), onnx_logits.argmax(1))
+        )
+    payload = {
+        "samples": len(arrays),
+        "top1_matches": top1_matches,
+        "top1_parity": top1_matches == len(arrays),
+        "max_abs_error": max_abs_error,
+        "mean_abs_error": float(np.mean(mean_abs_errors)),
+    }
+    if not payload["top1_parity"]:
+        raise RuntimeError(f"PyTorch/ONNX top-1 parity failed: {payload}")
+    return payload
+
+
+def verify_onnx_top1_parity(
+    reference_path: Path,
+    candidate_path: Path,
+    arrays: list[np.ndarray],
+    threads: int,
+) -> dict:
+    reference = make_session(reference_path, threads)
+    candidate = make_session(candidate_path, threads)
+    reference_name = reference.get_inputs()[0].name
+    candidate_name = candidate.get_inputs()[0].name
+    matches = 0
+    for array in arrays:
+        reference_logits = reference.run(None, {reference_name: array})[0]
+        candidate_logits = candidate.run(None, {candidate_name: array})[0]
+        matches += int(
+            np.array_equal(reference_logits.argmax(1), candidate_logits.argmax(1))
+        )
+    payload = {
+        "samples": len(arrays),
+        "top1_matches": matches,
+        "top1_parity": matches == len(arrays),
+        "partition": "training_calibration_only",
+    }
+    if not payload["top1_parity"]:
+        raise RuntimeError(f"FP32/INT8 calibration top-1 parity failed: {payload}")
+    return payload
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 5: Accuracy Evaluation (Optional)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -392,6 +483,7 @@ def evaluate_onnx_accuracy(
     split_path: Path,
     input_size: int,
     threads: int,
+    input_profile: str,
 ) -> dict:
     """Evaluate ONNX model accuracy with the same split/label mapping as training."""
     sess = make_session(model_path, threads)
@@ -403,7 +495,7 @@ def evaluate_onnx_accuracy(
     correct = 0
     total = 0
     for img_path, true_label in test_images:
-        x = preprocess_bmp(img_path, input_size)
+        x = preprocess_bmp(img_path, input_size, input_profile)
         logits = sess.run(None, {input_name: x})[0]
         pred = int(np.argmax(logits, axis=1)[0])
         if pred == true_label:
@@ -420,6 +512,8 @@ def evaluate_onnx_accuracy(
         "num_classes": len(split["subjects"]),
         "data_dir": str(data_dir),
         "split_path": str(split_path),
+        "input_profile": input_profile,
+        "input_profile_metadata": input_profile_metadata(input_profile),
     }
 
 
@@ -517,18 +611,38 @@ def main() -> None:
         raise KeyError("config.json missing both 'student_config_path' and 'genotype'")
 
     model = build_model(kd_cfg, student_cfg, model_path)
+    input_profile = str(student_cfg.get("input_profile", kd_cfg.get("input_profile", "legacy")))
+    validate_input_profile(input_profile)
+    print(f"  Input profile: {input_profile}")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Export FP32 ONNX
     # ─────────────────────────────────────────────────────────────────────────
     print_section("2. EXPORT ONNX FP32")
     fp32_size_mb = export_onnx_fp32(model, fp32_path, args.input_size, args.opset)
+    onnx_properties = {
+        "input_profile": input_profile,
+        "input_profile_parameters": json.dumps(
+            input_profile_metadata(input_profile), sort_keys=True,
+        ),
+        "external_preprocessing_required": True,
+        "stem_pool": student_cfg.get("stem_pool", "max"),
+    }
+    annotate_onnx_metadata(fp32_path, onnx_properties)
+    fp32_size_mb = fp32_path.stat().st_size / 1e6
 
     # ─────────────────────────────────────────────────────────────────────────
     # Quantize to INT8
     # ─────────────────────────────────────────────────────────────────────────
     print_section("3. QUANTIZE TO INT8")
     calib_images = collect_calibration_images(calib_dir, args.num_calib)
+    parity_arrays = [
+        preprocess_bmp(path, args.input_size, input_profile)
+        for path in calib_images[: min(16, len(calib_images))]
+    ]
+    torch_fp32_parity = verify_torch_onnx_parity(
+        model, fp32_path, parity_arrays, args.threads,
+    )
     manifest = load_json(calibration_manifest)
     manifest_entries = manifest.get("entries", [])
     if not manifest_entries or any(entry.get("source_split") != "train" for entry in manifest_entries):
@@ -567,6 +681,8 @@ def main() -> None:
     used_manifest = {
         "count": len(calib_images),
         "source_split": "train",
+        "input_profile": input_profile,
+        "input_profile_metadata": input_profile_metadata(input_profile),
         "validation_mode": validation_mode,
         "source_manifest": str(calibration_manifest),
         "source_manifest_sha256": sha256_file(calibration_manifest),
@@ -590,7 +706,12 @@ def main() -> None:
     input_name = fp32_sess.get_inputs()[0].name
 
     quant_recipe = quantize_to_int8(
-        fp32_path, int8_path, calib_images, input_name, args.input_size
+        fp32_path, int8_path, calib_images, input_name, args.input_size,
+        input_profile,
+    )
+    annotate_onnx_metadata(int8_path, onnx_properties)
+    fp32_int8_parity = verify_onnx_top1_parity(
+        fp32_path, int8_path, parity_arrays, args.threads,
     )
     int8_size_mb = int8_path.stat().st_size / 1e6
 
@@ -617,6 +738,7 @@ def main() -> None:
     c_init    = int(student_cfg.get("C_init",    kd_cfg.get("student_C_init", 4)))
     num_cells = int(student_cfg.get("num_cells", kd_cfg.get("student_num_cells", 8)))
     stem_downsample = int(student_cfg.get("stem_downsample", 2))
+    stem_pool = str(student_cfg.get("stem_pool", "max"))
     reduction_indices = parse_reduction_indices(student_cfg.get("reduction_indices"))
 
     metadata = {
@@ -625,21 +747,30 @@ def main() -> None:
         "model_path"   : str(model_path),
         "fp32_onnx"    : str(fp32_path),
         "int8_onnx"    : str(int8_path),
+        "fp32_onnx_sha256": sha256_file(fp32_path),
+        "int8_onnx_sha256": sha256_file(int8_path),
         "input_size"   : args.input_size,
         "opset"        : args.opset,
         "num_classes"  : int(kd_cfg.get("num_classes", 834)),
         "c_init"       : c_init,
         "num_cells"    : num_cells,
         "stem_downsample": stem_downsample,
+        "stem_pool"      : stem_pool,
         "reduction_indices": reduction_indices,
         "auxiliary"    : False,
         "fp32_size_mb" : round(fp32_size_mb, 4),
         "int8_size_mb" : round(int8_size_mb, 4),
         "backend"      : "onnxruntime",
+        "pytorch_fp32_onnx_parity": torch_fp32_parity,
+        "fp32_int8_calibration_top1_parity": fp32_int8_parity,
+        "input_profile": input_profile,
+        "input_profile_metadata": input_profile_metadata(input_profile),
         "calibration_manifest": str(used_manifest_path),
         "calibration_manifest_sha256": sha256_file(used_manifest_path),
         "calibration_validation_mode": validation_mode,
         "calibration_source_split": "train",
+        "input_profile": input_profile,
+        "input_profile_metadata": input_profile_metadata(input_profile),
         "calibration_images": len(calib_images),
         "test_previously_observed_acknowledged": bool(args.acknowledge_observed_test),
         "kd_config"    : {
@@ -667,6 +798,8 @@ def main() -> None:
         "int8_4t_ms": round(int8_stats["mean_ms"], 4),
         "speedup_x": round(speedup, 4),
         "quant_recipe": quant_recipe,
+        "pytorch_fp32_onnx_parity": torch_fp32_parity,
+        "fp32_int8_calibration_top1_parity": fp32_int8_parity,
     }
     save_json(model_dir / "benchmark_int8_static_results.json", benchmark_results)
 
@@ -685,13 +818,15 @@ def main() -> None:
             
             print(f"\n  FP32 Accuracy:")
             fp32_acc = evaluate_onnx_accuracy(
-                fp32_path, eval_data_dir, eval_split_path, args.input_size, args.threads
+                fp32_path, eval_data_dir, eval_split_path, args.input_size,
+                args.threads, input_profile,
             )
             save_json(model_dir / "model_benchmark_acc.json", fp32_acc)
             
             print(f"\n  INT8 Accuracy:")
             int8_acc = evaluate_onnx_accuracy(
-                int8_path, eval_data_dir, eval_split_path, args.input_size, args.threads
+                int8_path, eval_data_dir, eval_split_path, args.input_size,
+                args.threads, input_profile,
             )
             save_json(model_dir / "model_benchmark_int8_static_acc.json", int8_acc)
             

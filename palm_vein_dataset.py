@@ -19,7 +19,14 @@ from typing import Tuple, Dict, List
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset, Sampler
 from torchvision import transforms
+from torchvision.transforms import functional as TF
 from PIL import Image
+
+from palm_input_preprocessing import (
+    ApplyInputProfile,
+    LEGACY_INPUT_PROFILE,
+    validate_input_profile,
+)
 
 from nas_config import (
     DATA_DIR, SPLIT_PATH, SEED,
@@ -54,10 +61,37 @@ class Cutout:
         return img * mask.unsqueeze(0)
 
 
+class RandomGammaContrast:
+    """Domain-safe photometric perturbation for the strong consistency view."""
+
+    def __init__(self, gamma=(0.65, 1.45), contrast=(0.65, 1.35)):
+        self.gamma = tuple(float(value) for value in gamma)
+        self.contrast = tuple(float(value) for value in contrast)
+
+    def __call__(self, image):
+        gamma = random.uniform(*self.gamma)
+        contrast = random.uniform(*self.contrast)
+        return TF.adjust_contrast(TF.adjust_gamma(image, gamma), contrast)
+
+
+class TwoViewTransform:
+    """Return independently augmented reference and robust views."""
+
+    def __init__(self, reference_transform, robust_transform):
+        self.reference_transform = reference_transform
+        self.robust_transform = robust_transform
+
+    def __call__(self, image):
+        return self.reference_transform(image.copy()), self.robust_transform(image.copy())
+
+
 # ─── Transforms ─────────────────────────────────────────────────────────────
 
 def get_transforms(split="train", input_size=INPUT_SIZE,
-                   use_augmentation=True, cutout_length=0, augmentation_policy="v1_legacy"):
+                   use_augmentation=True, cutout_length=0,
+                   augmentation_policy="v1_legacy",
+                   input_profile=LEGACY_INPUT_PROFILE,
+                   consistency_mode="none"):
     """
     Get transforms consistent with teacher pipeline.
 
@@ -72,7 +106,14 @@ def get_transforms(split="train", input_size=INPUT_SIZE,
                              "v4_robust_light" (no flip, mild geometry with
                              stronger brightness/contrast robustness)
     """
+    validate_input_profile(input_profile)
+    if consistency_mode not in {"none", "js_two_view"}:
+        raise ValueError("consistency_mode must be 'none' or 'js_two_view'")
+    if consistency_mode != "none" and split != "train":
+        raise ValueError("Two-view consistency is valid only for the training split")
+
     common_tail = [
+        ApplyInputProfile(input_profile),
         transforms.ToTensor(),
         GrayscaleToRGB(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
@@ -139,7 +180,24 @@ def get_transforms(split="train", input_size=INPUT_SIZE,
         
         if cutout_length > 0:
             aug_list.append(Cutout(cutout_length))
-        return transforms.Compose(aug_list)
+        reference_transform = transforms.Compose(aug_list)
+        if consistency_mode == "none":
+            return reference_transform
+
+        robust_aug = [
+            transforms.Resize((input_size, input_size)),
+            transforms.RandomRotation(degrees=15),
+            transforms.RandomAffine(
+                degrees=0,
+                translate=(0.08, 0.08),
+                scale=(0.90, 1.12),
+            ),
+            RandomGammaContrast(gamma=(0.65, 1.45), contrast=(0.65, 1.35)),
+            *common_tail,
+        ]
+        if cutout_length > 0:
+            robust_aug.append(Cutout(cutout_length))
+        return TwoViewTransform(reference_transform, transforms.Compose(robust_aug))
     else:
         return transforms.Compose([
             transforms.Resize((input_size, input_size)),
@@ -438,6 +496,8 @@ def create_retrain_dataloaders(
     pk_k=4,
     seed=SEED,
     include_test=True,
+    input_profile=LEGACY_INPUT_PROFILE,
+    consistency_mode="none",
 ):
     """
     Create DataLoaders for retrain phase.
@@ -488,8 +548,13 @@ def create_retrain_dataloaders(
     if cutout_length > 0:
         print(f"  CutOut : {cutout_length}px")
 
-    train_tf = get_transforms("train", input_size, use_augmentation, cutout_length, augmentation_policy)
-    eval_tf = get_transforms("val", input_size)
+    train_tf = get_transforms(
+        "train", input_size, use_augmentation, cutout_length,
+        augmentation_policy, input_profile, consistency_mode,
+    )
+    eval_tf = get_transforms(
+        "val", input_size, input_profile=input_profile,
+    )
 
     train_ds = PalmVeinDataset(train_samples, train_tf)
     val_ds = PalmVeinDataset(val_samples, eval_tf)
@@ -538,6 +603,8 @@ def create_retrain_dataloaders(
         "test_size": len(test_samples) if include_test else None,
         "test_declared_size": len(split["test"]),
         "test_loader_created": bool(include_test),
+        "input_profile": input_profile,
+        "consistency_mode": consistency_mode,
         "sampler_type": sampler_type,
         "pk_p": pk_p if sampler_type == "pk" else None,
         "pk_k": pk_k if sampler_type == "pk" else None,

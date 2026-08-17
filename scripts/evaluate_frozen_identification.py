@@ -41,6 +41,7 @@ def build_model(config, checkpoint, device):
         num_cells=int(cfg["num_cells"]), num_classes=834, auxiliary=False,
         dropout=float(cfg.get("retrain_cfg", {}).get("dropout", 0.3)),
         stem_downsample=int(cfg.get("stem_downsample", 8)), reduction_indices=reduction,
+        stem_pool=cfg.get("stem_pool", "max"),
     )
     mode = cfg.get("loss_mode", "ce")
     if mode == "adaface":
@@ -82,7 +83,12 @@ def main():
     split = load_split(args.split_path)
     label_map = build_label_map(split["subjects"])
     samples = build_image_list(args.data_dir, split[args.partition], label_map)
-    dataset = PalmVeinDataset(samples, get_transforms("val", 224))
+    dataset = PalmVeinDataset(
+        samples,
+        get_transforms(
+            "val", 224, input_profile=cfg.get("input_profile", "legacy"),
+        ),
+    )
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False,
                         num_workers=args.num_workers)
     rows, total_loss, cursor = [], 0.0, 0
@@ -117,6 +123,9 @@ def main():
         "mean_true_class_margin": sum(row["true_class_margin"] for row in rows) / len(rows),
         "checkpoint": args.checkpoint, "checkpoint_sha256": sha(args.checkpoint),
         "config": args.config, "config_sha256": sha(args.config),
+        "input_profile": cfg.get("input_profile", "legacy"),
+        "stem_pool": cfg.get("stem_pool", "max"),
+        "consistency_mode": cfg.get("consistency_mode", "none"),
         "split_sha256": sha(args.split_path), "reported_metrics": ["accuracy_crr", "correct_total"],
         "excluded_metrics": ["eer", "far", "frr", "biometric_auc"],
     }

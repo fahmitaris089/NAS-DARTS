@@ -13,20 +13,23 @@ from torchvision import transforms
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT.parent))
 
 from src.common import load_json, save_json, sha256_file
 from src.data import load_dataset_config, validate_calibration_manifest
 from src.data.dataset import GrayscaleToRGB, label_map_from_split, load_split
 from src.deployment.onnx_utils import create_session, validate_onnx_file
+from palm_input_preprocessing import ApplyInputProfile, input_profile_metadata
 
 
 class PalmCalibrationReader(CalibrationDataReader):
-    def __init__(self, dataset_config: dict, manifest: dict, input_name: str):
+    def __init__(self, dataset_config: dict, manifest: dict, input_name: str, input_profile: str):
         self.input_name = input_name
         self.root = Path(dataset_config["data_dir"])
         size = int(dataset_config["input_size"])
         self.transform = transforms.Compose([
-            transforms.Resize((size, size)), transforms.ToTensor(), GrayscaleToRGB(),
+            transforms.Resize((size, size)), ApplyInputProfile(input_profile),
+            transforms.ToTensor(), GrayscaleToRGB(),
             transforms.Normalize(dataset_config["imagenet_mean"], dataset_config["imagenet_std"]),
         ])
         self.entries = list(manifest["entries"])
@@ -45,7 +48,7 @@ class PalmCalibrationReader(CalibrationDataReader):
         self.index = 0
 
 
-def evaluate_onnx(model_path: Path, dataset_config: dict, batch_size: int = 64, threads: int = 4):
+def evaluate_onnx(model_path: Path, dataset_config: dict, input_profile: str, batch_size: int = 64, threads: int = 4):
     import torch
     from torch.utils.data import DataLoader
     from src.data.dataset import PalmVeinDataset, build_samples, build_transforms
@@ -53,7 +56,11 @@ def evaluate_onnx(model_path: Path, dataset_config: dict, batch_size: int = 64, 
     split = load_split(dataset_config["split_path"])
     labels = label_map_from_split(split)
     samples = build_samples(dataset_config["data_dir"], split["test"], labels)
-    dataset = PalmVeinDataset(samples, build_transforms(dataset_config, {}, training=False))
+    dataset = PalmVeinDataset(
+        samples, build_transforms(
+            dataset_config, {"input_profile": input_profile}, training=False,
+        ),
+    )
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     session = create_session(model_path, threads)
     input_name = session.get_inputs()[0].name
@@ -80,9 +87,17 @@ def main():
     manifest_validation = validate_calibration_manifest(dataset, manifest)
     session = create_session(args.onnx, int(deploy["runtime"]["intra_op_threads"]))
     input_name = session.get_inputs()[0].name
+    source_metadata = {}
+    resolved_fp32 = str(args.onnx.resolve())
+    for metadata_path in (PROJECT_ROOT / "results/deployment").glob("*_onnx_fp32.json"):
+        candidate = load_json(metadata_path)
+        if candidate.get("onnx_path") == resolved_fp32:
+            source_metadata = candidate
+            break
+    input_profile = str(source_metadata.get("input_profile", "legacy"))
     output = args.output or PROJECT_ROOT / "artifacts/onnx_int8" / f"{args.onnx.stem}_int8_qdq.onnx"
     output.parent.mkdir(parents=True, exist_ok=True)
-    reader = PalmCalibrationReader(dataset, manifest, input_name)
+    reader = PalmCalibrationReader(dataset, manifest, input_name, input_profile)
     quantize_static(
         str(args.onnx), str(output), reader, quant_format=QuantFormat.QDQ,
         activation_type=QuantType.QUInt8, weight_type=QuantType.QInt8, per_channel=True,
@@ -96,20 +111,21 @@ def main():
     if smoke_output.shape != (1, int(dataset["expected_classes"])):
         raise RuntimeError(f"INT8 smoke output shape is {smoke_output.shape}")
     evaluation = None if args.skip_test_evaluation else evaluate_onnx(
-        output, dataset, threads=int(deploy["runtime"]["intra_op_threads"])
+        output, dataset, input_profile,
+        threads=int(deploy["runtime"]["intra_op_threads"])
     )
-    source_metadata = {}
-    resolved_fp32 = str(args.onnx.resolve())
-    for metadata_path in (PROJECT_ROOT / "results/deployment").glob("*_onnx_fp32.json"):
-        candidate = load_json(metadata_path)
-        if candidate.get("onnx_path") == resolved_fp32:
-            source_metadata = {key: candidate[key] for key in ("model", "protocol", "seed", "parameters") if key in candidate}
-            break
+    source_metadata = {
+        key: source_metadata[key]
+        for key in ("model", "protocol", "seed", "parameters", "input_profile", "input_profile_metadata")
+        if key in source_metadata
+    }
     payload = {
         **source_metadata,
         "fp32_onnx": str(args.onnx.resolve()), "int8_onnx": str(output.resolve()),
         "int8_sha256": sha256_file(output), "int8_bytes": output.stat().st_size,
         "format": "QDQ", "weights": "QInt8 per-channel", "activations": "QUInt8",
+        "input_profile": input_profile,
+        "input_profile_metadata": input_profile_metadata(input_profile),
         "calibration": manifest_validation, "test": evaluation, "smoke_output_shape": list(smoke_output.shape),
     }
     save_json(payload, PROJECT_ROOT / "results/deployment" / f"{output.stem}_quantization.json")

@@ -40,6 +40,11 @@ from sklearn.metrics import (
 from scipy.optimize import brentq
 from scipy.interpolate import interp1d
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+if str(REPOSITORY_ROOT) not in sys.path:
+    # Keep the script-local NAS modules ahead of the repository-level mirrors.
+    sys.path.append(str(REPOSITORY_ROOT))
+
 # Force UTF-8 output on Windows
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -51,39 +56,76 @@ from genotypes import dict_to_genotype, genotype_to_dict
 from model_eval import EvalNetwork, count_parameters, find_optimal_C_init, param_breakdown
 from adaface import replace_linear_with_adaface, replace_linear_with_arcface
 from palm_vein_dataset import create_retrain_dataloaders
+from palm_input_preprocessing import input_profile_metadata
+from consistency_training import js_consistency_loss
 from utils import set_seed, get_device, setup_logger, AverageMeter
 
 
 # ─── Training One Epoch ─────────────────────────────────────────────────────
 
 def train_one_epoch(model, loader, criterion, optimizer, device,
-                    auxiliary, aux_weight, grad_clip, loss_mode="ce"):
+                    auxiliary, aux_weight, grad_clip, loss_mode="ce",
+                    consistency_mode="none", consistency_temperature=4.0,
+                    consistency_weight=1.0, consistency_ramp_epochs=20,
+                    epoch=1):
     """Train one epoch with optional auxiliary head loss."""
     model.train()
     losses = AverageMeter()
     top1 = AverageMeter()
+    consistency_losses = AverageMeter()
+    view_agreements = AverageMeter()
 
     for images, labels in loader:
-        images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
 
         optimizer.zero_grad()
 
-        if loss_mode in {"adaface", "arcface", "subcenter_arcface"}:
-            logits, margin_logits, _ = model.forward_adaface(images, labels)
-            loss = criterion(margin_logits, labels)
-            output = logits
+        if consistency_mode == "js_two_view":
+            if loss_mode not in {"adaface", "arcface", "subcenter_arcface"}:
+                raise ValueError("js_two_view requires a metric-margin classifier")
+            if not isinstance(images, (tuple, list)) or len(images) != 2:
+                raise ValueError("js_two_view expects exactly two image views")
+            reference = images[0].to(device, non_blocking=True)
+            robust = images[1].to(device, non_blocking=True)
+            _, margin_ref, embedding_ref = model.forward_adaface(reference, labels)
+            _, margin_rob, embedding_rob = model.forward_adaface(robust, labels)
+            # Consistency is defined on inference cosine logits. Bypass dropout
+            # and the label-dependent margin so only the two input views differ.
+            logits_ref = model.classifier(embedding_ref)
+            logits_rob = model.classifier(embedding_rob)
+            classification_loss = 0.5 * (
+                criterion(margin_ref, labels) + criterion(margin_rob, labels)
+            )
+            consistency_loss = js_consistency_loss(
+                logits_ref, logits_rob, consistency_temperature,
+            )
+            ramp = 1.0 if consistency_ramp_epochs <= 0 else min(
+                1.0, max(0.0, epoch / consistency_ramp_epochs)
+            )
+            loss = classification_loss + ramp * consistency_weight * consistency_loss
+            logits = 0.5 * (logits_ref + logits_rob)
+            agreement = logits_ref.argmax(1).eq(logits_rob.argmax(1)).float().mean().item()
+            batch_size = reference.size(0)
         else:
-            output = model(images)
+            images = images.to(device, non_blocking=True)
+            if loss_mode in {"adaface", "arcface", "subcenter_arcface"}:
+                logits, margin_logits, _ = model.forward_adaface(images, labels)
+                loss = criterion(margin_logits, labels)
+                output = logits
+            else:
+                output = model(images)
 
-        if loss_mode in {"adaface", "arcface", "subcenter_arcface"}:
-            pass
-        elif auxiliary and isinstance(output, tuple):
-            logits, logits_aux = output
-            loss = criterion(logits, labels) + aux_weight * criterion(logits_aux, labels)
-        else:
-            logits = output if not isinstance(output, tuple) else output[0]
-            loss = criterion(logits, labels)
+            if loss_mode in {"adaface", "arcface", "subcenter_arcface"}:
+                pass
+            elif auxiliary and isinstance(output, tuple):
+                logits, logits_aux = output
+                loss = criterion(logits, labels) + aux_weight * criterion(logits_aux, labels)
+            else:
+                logits = output if not isinstance(output, tuple) else output[0]
+                loss = criterion(logits, labels)
+            consistency_loss = logits.new_zeros(())
+            agreement = 1.0
+            batch_size = images.size(0)
 
         loss.backward()
 
@@ -94,10 +136,12 @@ def train_one_epoch(model, loader, criterion, optimizer, device,
 
         _, pred = logits.max(1)
         acc = pred.eq(labels).float().mean().item()
-        losses.update(loss.item(), images.size(0))
-        top1.update(acc, images.size(0))
+        losses.update(loss.item(), batch_size)
+        top1.update(acc, batch_size)
+        consistency_losses.update(consistency_loss.item(), batch_size)
+        view_agreements.update(agreement, batch_size)
 
-    return losses.avg, top1.avg
+    return losses.avg, top1.avg, consistency_losses.avg, view_agreements.avg
 
 
 # ─── Validation ──────────────────────────────────────────────────────────────
@@ -294,6 +338,8 @@ def main():
     parser.add_argument("--stem_downsample", type=int, default=2,
                         help="Stem spatial downsample factor (power of 2). "
                              "2=224->112 (default), 4=224->56 (lower latency).")
+    parser.add_argument("--stem-pool", choices=["max", "avg"], default="max",
+                        help="Pooling used for extra stem downsampling steps")
     parser.add_argument("--reduction_indices", type=str, default=None,
                         help="Comma-separated cell indices used as reduction cells, "
                              "e.g. '2,5'. Default: [num_cells//3, 2*num_cells//3].")
@@ -312,6 +358,12 @@ def main():
                             "v2_multi_distance (aggressive no flip), v3_no_flip_light "
                             "(mild no flip), or v4_robust_light (robust brightness/crop no flip)"
                         ))
+    parser.add_argument("--input-profile",
+                        choices=["legacy", "robust_percentile_v1"], default="legacy")
+    parser.add_argument("--consistency-mode", choices=["none", "js_two_view"], default="none")
+    parser.add_argument("--consistency-temperature", type=float, default=4.0)
+    parser.add_argument("--consistency-weight", type=float, default=1.0)
+    parser.add_argument("--consistency-ramp-epochs", type=int, default=20)
     parser.add_argument("--auxiliary", action="store_true", default=RETRAIN_CFG["auxiliary"])
     parser.add_argument("--no_auxiliary", action="store_true")
     parser.add_argument("--seed", type=int, default=SEED)
@@ -346,6 +398,10 @@ def main():
     use_auxiliary = args.auxiliary and not args.no_auxiliary and args.loss_mode not in margin_modes
     if args.loss_mode in margin_modes and args.label_smoothing != 0.0:
         parser.error("Margin-head runs require --label-smoothing 0.0")
+    if args.consistency_mode != "none" and args.loss_mode not in margin_modes:
+        parser.error("js_two_view requires a metric-margin --loss-mode")
+    if args.consistency_temperature <= 0 or args.consistency_weight < 0:
+        parser.error("Consistency temperature must be positive and weight non-negative")
 
     # Parse reduction indices ("2,5" -> [2, 5]); None keeps the default positions.
     reduction_indices = None
@@ -383,6 +439,9 @@ def main():
         pk_p=args.pk_p,
         pk_k=args.pk_k,
         seed=args.seed,
+        include_test=not args.skip_test_evaluation,
+        input_profile=args.input_profile,
+        consistency_mode=args.consistency_mode,
     )
     num_classes = data_info["num_classes"]
 
@@ -412,6 +471,7 @@ def main():
         dropout=RETRAIN_CFG["dropout"],
         stem_downsample=args.stem_downsample,
         reduction_indices=reduction_indices,
+        stem_pool=args.stem_pool,
     ).to(device)
     if args.initial_weights:
         initial_payload = torch.load(args.initial_weights, map_location="cpu", weights_only=False)
@@ -515,6 +575,7 @@ def main():
         "arcface_subcenters": (
             args.arcface_subcenters or (2 if args.loss_mode == "subcenter_arcface" else 1)
         ),
+        "input_profile_metadata": input_profile_metadata(args.input_profile),
     }
 
     with open(save_dir / "config.json", "w") as f:
@@ -530,7 +591,8 @@ def main():
     if not append_log:
         log_writer.writerow([
             "epoch", "train_loss", "train_acc", "val_loss", "val_acc",
-            "val_true_class_margin", "lr", "drop_path", "epoch_time_sec",
+            "val_true_class_margin", "consistency_loss", "view_agreement",
+            "lr", "drop_path", "epoch_time_sec",
         ])
 
     # ─── Training Loop ───────────────────────────────────────────────────
@@ -563,6 +625,25 @@ def main():
         "sampler": args.train_sampler,
         "pk_p": args.pk_p if args.train_sampler == "pk" else None,
         "pk_k": args.pk_k if args.train_sampler == "pk" else None,
+        "input_profile": args.input_profile,
+        "input_profile_metadata": input_profile_metadata(args.input_profile),
+        "augmentation_policy": args.augmentation_policy,
+        "consistency_mode": args.consistency_mode,
+        "consistency_temperature": args.consistency_temperature,
+        "consistency_weight": args.consistency_weight,
+        "consistency_ramp_epochs": args.consistency_ramp_epochs,
+        "stem_pool": args.stem_pool,
+        "stem_downsample": args.stem_downsample,
+        "C_init": C_init,
+        "num_cells": args.num_cells,
+        "reduction_indices": reduction_indices,
+        "loss_mode": args.loss_mode,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "learning_rate": args.lr,
+        "minimum_learning_rate": args.lr_min,
+        "weight_decay": args.weight_decay,
+        "warmup_epochs": args.warmup_epochs,
     }
 
     def rng_state():
@@ -637,12 +718,17 @@ def main():
         epoch_start = time.time()
 
         # Train
-        train_loss, train_acc = train_one_epoch(
+        train_loss, train_acc, train_consistency, view_agreement = train_one_epoch(
             model, train_loader, criterion, optimizer, device,
             auxiliary=use_auxiliary,
             aux_weight=RETRAIN_CFG["auxiliary_weight"],
             grad_clip=RETRAIN_CFG["grad_clip"],
             loss_mode=args.loss_mode,
+            consistency_mode=args.consistency_mode,
+            consistency_temperature=args.consistency_temperature,
+            consistency_weight=args.consistency_weight,
+            consistency_ramp_epochs=args.consistency_ramp_epochs,
+            epoch=epoch,
         )
 
         # Validate
@@ -658,6 +744,7 @@ def main():
             f"{train_loss:.6f}", f"{train_acc:.6f}",
             f"{val_loss:.6f}", f"{val_acc:.6f}",
             f"{val_margin:.6f}",
+            f"{train_consistency:.6f}", f"{view_agreement:.6f}",
             f"{current_lr:.8f}", f"{drop_path:.4f}", f"{epoch_time:.2f}",
         ])
         log_file.flush()
@@ -704,6 +791,7 @@ def main():
                 f"  E{epoch:>4}/{args.epochs} │ "
                 f"train_loss={train_loss:.4f}  acc={train_acc:.4f} │ "
                 f"val_loss={val_loss:.4f}  acc={val_acc:.4f}  margin={val_margin:.4f} │ "
+                f"js={train_consistency:.4f}  agree={view_agreement:.4f} │ "
                 f"lr={current_lr:.6f}  dp={drop_path:.3f}  "
                 f"{epoch_time:.1f}s{marker}"
             )
@@ -726,6 +814,7 @@ def main():
             dropout=RETRAIN_CFG["dropout"],
             stem_downsample=args.stem_downsample,
             reduction_indices=reduction_indices,
+            stem_pool=args.stem_pool,
         ).to(device)
         if args.loss_mode == "adaface":
             replace_linear_with_adaface(
@@ -754,6 +843,9 @@ def main():
     if args.skip_test_evaluation:
         screening = {
             "status": "screening_complete_test_not_evaluated",
+            "partition": "validation_only",
+            "test_loader_created": bool(data_info.get("test_loader_created")),
+            "test_partition_inspected": False,
             "best_epoch": best_epoch,
             "best_validation_loss": float(best_val_loss),
             "best_validation_accuracy": float(best_val_acc),
@@ -769,6 +861,9 @@ def main():
                 "negative_true_class_margin": float(best_screening[2]),
             },
             "loss_mode": args.loss_mode,
+            "input_profile": args.input_profile,
+            "stem_pool": args.stem_pool,
+            "consistency_mode": args.consistency_mode,
         }
         with open(save_dir / "screening_results.json", "w") as f:
             json.dump(screening, f, indent=2)

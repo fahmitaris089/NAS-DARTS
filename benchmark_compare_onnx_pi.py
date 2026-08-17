@@ -48,7 +48,12 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image
+
+from palm_input_preprocessing import (
+    INPUT_PROFILES,
+    input_profile_metadata,
+    preprocess_path_to_imagenet_bchw,
+)
 
 try:
     import onnxruntime as ort
@@ -67,10 +72,6 @@ DEFAULT_MODEL_A = (
 DEFAULT_MODEL_B = (
     PROJECT_ROOT / "nas_results" / "baseline_mobilenetv3" / "mobilenetv3_benchmark.onnx"
 )
-
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(3, 1, 1)
-IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(3, 1, 1)
-
 
 @dataclass
 class Sample:
@@ -104,8 +105,14 @@ def parse_args() -> argparse.Namespace:
         help="Skip accuracy evaluation for model-b (latency-only).",
     )
     parser.add_argument("--input-size", type=int, default=224)
+    parser.add_argument("--input-profile-a", choices=INPUT_PROFILES, default="legacy")
+    parser.add_argument("--input-profile-b", choices=INPUT_PROFILES, default="legacy")
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=20)
+    parser.add_argument(
+        "--iterations", type=int, default=0,
+        help="Timed iterations per model; 0 uses the number of test samples",
+    )
     parser.add_argument("--max-samples", type=int, default=0, help="0 = use full test split")
     parser.add_argument("--save-path", type=Path,
                         default=PROJECT_ROOT / "benchmark_compare_onnx_pi_results.json")
@@ -159,12 +166,10 @@ def build_test_samples(data_dir: Path, split: dict[str, Any], max_samples: int) 
     return samples
 
 
-def preprocess_image(path: Path, input_size: int) -> np.ndarray:
-    image = Image.open(path).convert("L").resize((input_size, input_size), Image.BILINEAR)
-    gray = np.asarray(image, dtype=np.float32) / 255.0
-    rgb = np.stack([gray, gray, gray], axis=0)
-    rgb = (rgb - IMAGENET_MEAN) / IMAGENET_STD
-    return np.expand_dims(rgb.astype(np.float32), axis=0)
+def preprocess_image(path: Path, input_size: int, input_profile: str) -> np.ndarray:
+    return preprocess_path_to_imagenet_bchw(
+        str(path), input_size=input_size, profile=input_profile,
+    )
 
 
 def create_session(model_path: Path, threads: int) -> ort.InferenceSession:
@@ -184,48 +189,80 @@ def benchmark_model(
     input_size: int,
     threads: int,
     warmup: int,
+    input_profile: str,
+    iterations: int,
     label_map: dict[str, int] | None = None,
     skip_accuracy: bool = False,
 ) -> dict[str, Any]:
     session = create_session(model_path, threads)
     input_name = session.get_inputs()[0].name
 
-    cached_inputs = [preprocess_image(sample.path, input_size) for sample in samples]
+    cached_inputs = [
+        preprocess_image(sample.path, input_size, input_profile) for sample in samples
+    ]
     dummy = cached_inputs[0]
 
     for _ in range(max(warmup, 0)):
         session.run(None, {input_name: dummy})
 
     latencies_ms: list[float] = []
+    preprocessing_ms: list[float] = []
+    end_to_end_ms: list[float] = []
     correct = 0
     evaluated = 0
 
-    for sample, array in zip(samples, cached_inputs):
+    if not skip_accuracy and label_map is not None:
+        for sample, array in zip(samples, cached_inputs):
+            outputs = session.run(None, {input_name: array})
+            if sample.subject_id in label_map:
+                logits = np.asarray(outputs[0], dtype=np.float32)
+                pred = int(np.argmax(logits[0]))
+                if pred == label_map[sample.subject_id]:
+                    correct += 1
+                evaluated += 1
+
+    timed_iterations = iterations if iterations > 0 else len(samples)
+    for index in range(timed_iterations):
+        sample = samples[index % len(samples)]
+        array = cached_inputs[index % len(cached_inputs)]
         start = time.perf_counter()
-        outputs = session.run(None, {input_name: array})
+        session.run(None, {input_name: array})
         end = time.perf_counter()
         latencies_ms.append((end - start) * 1000.0)
 
-        if not skip_accuracy and label_map is not None and sample.subject_id in label_map:
-            logits = np.asarray(outputs[0], dtype=np.float32)
-            pred = int(np.argmax(logits[0]))
-            if pred == label_map[sample.subject_id]:
-                correct += 1
-            evaluated += 1
+        preprocess_start = time.perf_counter()
+        live_array = preprocess_image(sample.path, input_size, input_profile)
+        inference_start = time.perf_counter()
+        session.run(None, {input_name: live_array})
+        e2e_end = time.perf_counter()
+        preprocessing_ms.append((inference_start - preprocess_start) * 1000.0)
+        end_to_end_ms.append((e2e_end - preprocess_start) * 1000.0)
 
     latency = np.asarray(latencies_ms, dtype=np.float64)
+    preprocessing = np.asarray(preprocessing_ms, dtype=np.float64)
+    end_to_end = np.asarray(end_to_end_ms, dtype=np.float64)
     accuracy = (correct / evaluated) if evaluated > 0 else None
     return {
         "model_path": str(model_path),
         "num_samples": len(samples),
+        "timed_iterations": timed_iterations,
         "accuracy": accuracy,
         "correct": correct if evaluated > 0 else None,
         "accuracy_evaluated": evaluated,
         "file_size_mb": model_path.stat().st_size / 1e6,
+        "input_profile": input_profile,
+        "input_profile_metadata": input_profile_metadata(input_profile),
+        "latency_scope": "model_only_preprocessed_input",
         "latency_mean_ms": float(latency.mean()),
         "latency_median_ms": float(np.median(latency)),
         "latency_p95_ms": float(np.percentile(latency, 95)),
         "latency_std_ms": float(latency.std()),
+        "preprocessing_mean_ms": float(preprocessing.mean()),
+        "preprocessing_median_ms": float(np.median(preprocessing)),
+        "preprocessing_p95_ms": float(np.percentile(preprocessing, 95)),
+        "end_to_end_mean_ms": float(end_to_end.mean()),
+        "end_to_end_median_ms": float(np.median(end_to_end)),
+        "end_to_end_p95_ms": float(np.percentile(end_to_end, 95)),
         "threads": threads,
     }
 
@@ -239,11 +276,18 @@ def print_result(label: str, result: dict[str, Any]) -> None:
         print("  accuracy  : N/A (skipped or label map not provided)")
     print(f"  size      : {result['file_size_mb']:.3f} MB")
     print(
-        "  latency   : "
+        "  model-only: "
         f"mean={result['latency_mean_ms']:.2f} ms  "
         f"median={result['latency_median_ms']:.2f} ms  "
         f"p95={result['latency_p95_ms']:.2f} ms"
     )
+    print(
+        "  end-to-end: "
+        f"mean={result['end_to_end_mean_ms']:.2f} ms  "
+        f"median={result['end_to_end_median_ms']:.2f} ms  "
+        f"p95={result['end_to_end_p95_ms']:.2f} ms"
+    )
+    print(f"  input     : {result['input_profile']}")
 
 
 def main() -> None:
@@ -266,10 +310,12 @@ def main() -> None:
 
     result_a = benchmark_model(
         args.model_a, samples, args.input_size, args.threads, args.warmup,
+        args.input_profile_a, args.iterations,
         label_map=label_map_a, skip_accuracy=args.skip_accuracy_a,
     )
     result_b = benchmark_model(
         args.model_b, samples, args.input_size, args.threads, args.warmup,
+        args.input_profile_b, args.iterations,
         label_map=label_map_b, skip_accuracy=args.skip_accuracy_b,
     )
 
@@ -289,6 +335,7 @@ def main() -> None:
         "input_size": args.input_size,
         "threads": args.threads,
         "warmup": args.warmup,
+        "timed_iterations": args.iterations or len(samples),
         "num_samples": len(samples),
         "model_a": {"label": args.label_a, **result_a},
         "model_b": {"label": args.label_b, **result_b},
