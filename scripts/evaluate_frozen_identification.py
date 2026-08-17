@@ -29,7 +29,10 @@ def sha(path):
 def build_model(config, checkpoint, device):
     cfg = json.loads(Path(config).read_text(encoding="utf-8"))
     if "genotype" not in cfg and cfg.get("student_config_path"):
-        student_config = Path(cfg["student_config_path"])
+        # Experiment configs may be produced on Windows and later audited on
+        # POSIX systems.  Backslashes are ordinary filename characters on
+        # POSIX, so normalize the persisted project-relative path first.
+        student_config = Path(str(cfg["student_config_path"]).replace("\\", "/"))
         if not student_config.is_absolute():
             student_config = ROOT / student_config
         cfg = json.loads(student_config.read_text(encoding="utf-8"))

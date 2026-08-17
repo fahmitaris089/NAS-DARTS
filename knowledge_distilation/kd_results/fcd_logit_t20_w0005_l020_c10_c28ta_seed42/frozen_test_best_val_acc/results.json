@@ -1,0 +1,29 @@
+{
+  "task": "closed_set_identification",
+  "partition": "test",
+  "test_previously_observed_acknowledged": true,
+  "checkpoint_selection_occurred_on_test": false,
+  "correct": 833,
+  "samples": 834,
+  "accuracy": 0.9988009592326139,
+  "ordinary_ce_loss": 0.014550680001933436,
+  "mean_true_class_margin": 34.78992759466743,
+  "checkpoint": "knowledge_distilation\\kd_results\\fcd_logit_t20_w0005_l020_c10_c28ta_seed42\\best_by_val_acc.pth",
+  "checkpoint_sha256": "3085597d3c2dae8c0b5009d7c08123d4561430121aa9ae0e20ea4861e3b4ca21",
+  "config": "knowledge_distilation\\kd_results\\fcd_logit_t20_w0005_l020_c10_c28ta_seed42\\config.json",
+  "config_sha256": "a8136171e55da2c7c869677d127f1a104c899e8cf99d25ff87dbbc5ce7b10910",
+  "input_profile": "legacy",
+  "stem_pool": "max",
+  "consistency_mode": "none",
+  "split_sha256": "8e393a52fbc93c19d420c942adf104b1910c708e796fcdb13e17ac90482966de",
+  "reported_metrics": [
+    "accuracy_crr",
+    "correct_total"
+  ],
+  "excluded_metrics": [
+    "eer",
+    "far",
+    "frr",
+    "biometric_auc"
+  ]
+}
