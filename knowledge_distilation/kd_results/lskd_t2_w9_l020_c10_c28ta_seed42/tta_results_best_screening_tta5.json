@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-08-18T05:19:53.164448",
+  "model_dir": "E:\\S2_Fahmi\\NAS-DARTS\\knowledge_distilation\\kd_results\\lskd_t2_w9_l020_c10_c28ta_seed42\\_eval_best_screening_tmp",
+  "tta_views": 5,
+  "tta_view_names": [
+    "original",
+    "hflip",
+    "rotate_+5",
+    "rotate_-5",
+    "bright_1.1"
+  ],
+  "no_tta": false,
+  "results": {
+    "test": {
+      "acc": 0.9976,
+      "loss": 0.6626,
+      "auc": 0.9999899240271648,
+      "eer_pct": 0.001,
+      "per_view_acc": {
+        "original": 0.9976,
+        "hflip": 0.006,
+        "rotate_+5": 0.9964,
+        "rotate_-5": 0.9964,
+        "bright_1.1": 0.9976
+      },
+      "n_samples": 834,
+      "time_s": 2.7
+    }
+  }
+}

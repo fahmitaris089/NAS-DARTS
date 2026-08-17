@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-08-18T05:18:56.564994",
+  "model_dir": "knowledge_distilation\\kd_results\\lskd_t2_w9_l020_c10_c28ta_seed42",
+  "tta_views": 5,
+  "tta_view_names": [
+    "original",
+    "hflip",
+    "rotate_+5",
+    "rotate_-5",
+    "bright_1.1"
+  ],
+  "no_tta": false,
+  "results": {
+    "test": {
+      "acc": 0.9976,
+      "loss": 0.6201,
+      "auc": 0.9999611355333501,
+      "eer_pct": 0.0039,
+      "per_view_acc": {
+        "original": 0.9976,
+        "hflip": 0.0132,
+        "rotate_+5": 0.9952,
+        "rotate_-5": 0.9976,
+        "bright_1.1": 0.9976
+      },
+      "n_samples": 834,
+      "time_s": 6.2
+    }
+  }
+}
