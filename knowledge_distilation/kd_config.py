@@ -115,6 +115,11 @@ class KDConfig:
     progressive_feature_grad_ratio: float = 0.05
     progressive_relation_grad_ratio: float = 0.05
     logit_kd_weight: float = 0.0
+    # Logit Standardization KD (Sun et al., CVPR 2024).  These defaults
+    # mirror the authors' public KD recipe; experiment runners may override
+    # them explicitly for a controlled domain-specific ablation.
+    ls_kd_weight: float = 9.0
+    ls_eps: float = 1e-7
     topk_k: int = 5
     topk_weight: float = 0.05
     margin_weight: float = 0.10
@@ -265,6 +270,11 @@ def print_config(cfg: KDConfig) -> None:
         print(
             f"                    Logit KD weight={cfg.logit_kd_weight} "
             f"T={cfg.temperature} warmup={cfg.icd_logit_warmup_epochs}"
+        )
+    if cfg.kd_method == "logit_standardization":
+        print(
+            f"  Logit-stand KD   : CE={cfg.ce_weight} KD={cfg.ls_kd_weight} "
+            f"base_T={cfg.temperature} eps={cfg.ls_eps}"
         )
     print()
     print(f"  Epochs          : {cfg.epochs}")

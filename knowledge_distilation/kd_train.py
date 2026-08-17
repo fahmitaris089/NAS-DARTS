@@ -62,6 +62,7 @@ from genotypes import dict_to_genotype
 from kd_config import KD_CFG, KDConfig, print_config
 from kd_loss import (
     HintonKDLoss,
+    LogitStandardizationKDLoss,
     DecoupledKDLoss,
     HybridBiometricKDLoss,
     HardTopKMarginKDLoss,
@@ -151,8 +152,12 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                             "hinton", "dkd", "pairwise", "embedding", "hybrid",
                             "hard_topk", "conservative", "conservative_multiteacher",
                             "topkd", "adaptive_center_relation", "icd_compactness",
+                            "logit_standardization",
                         ],
-                        help="KD loss method. 'hinton' preserves the original logit KD path.")
+                        help=(
+                            "KD loss method. 'hinton' preserves the original logit KD path; "
+                            "'logit_standardization' applies per-sample z-score KD."
+                        ))
     parser.add_argument("--icd_mode", choices=["fcd", "full"], default=cfg.icd_mode)
     parser.add_argument("--icd_bank_size", type=int, default=cfg.icd_bank_size)
     parser.add_argument("--icd_valid_steps", type=int, default=cfg.icd_valid_steps)
@@ -180,7 +185,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     parser.add_argument("--skip-test-evaluation", action="store_true",
                         help="Do not inspect the test split during screening")
     parser.add_argument("--ce_weight", type=float, default=cfg.ce_weight,
-                        help="CE weight for pairwise/embedding/hybrid KD")
+                        help="CE weight for biometric KD or logit_standardization")
     parser.add_argument("--relation_weight", type=float, default=cfg.relation_weight,
                         help="Pairwise relation loss weight")
     parser.add_argument("--center_weight", type=float, default=cfg.center_weight)
@@ -218,6 +223,14 @@ def parse_args(cfg: KDConfig) -> KDConfig:
                         help="Projected embedding loss weight")
     parser.add_argument("--logit_kd_weight", type=float, default=cfg.logit_kd_weight,
                         help="Optional Hinton logit KD weight inside hybrid or ICD/FCD KD")
+    parser.add_argument(
+        "--ls_kd_weight", type=float, default=cfg.ls_kd_weight,
+        help="Weight of standardized-logit KL for --kd_method logit_standardization",
+    )
+    parser.add_argument(
+        "--ls_eps", type=float, default=cfg.ls_eps,
+        help="Numerical epsilon for per-sample logit z-score normalization",
+    )
     parser.add_argument("--topk_k", type=int, default=cfg.topk_k,
                         help="Teacher top-k classes for hard_topk KD")
     parser.add_argument("--topk_weight", type=float, default=cfg.topk_weight,
@@ -376,6 +389,8 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.adaface_t_alpha     = args.adaface_t_alpha
     cfg.skip_test_evaluation = args.skip_test_evaluation
     cfg.ce_weight           = args.ce_weight
+    if cfg.ce_weight < 0:
+        parser.error("--ce_weight cannot be negative")
     cfg.relation_weight     = args.relation_weight
     cfg.center_weight       = args.center_weight
     cfg.feature_weight      = args.feature_weight
@@ -407,10 +422,16 @@ def parse_args(cfg: KDConfig) -> KDConfig:
         parser.error("weights_only continuation requires --continuation_source_epoch > 0")
     cfg.embedding_weight    = args.embedding_weight
     cfg.logit_kd_weight     = args.logit_kd_weight
+    cfg.ls_kd_weight        = args.ls_kd_weight
+    cfg.ls_eps              = args.ls_eps
     if cfg.temperature <= 0:
         parser.error("--temperature must be positive")
     if cfg.logit_kd_weight < 0:
         parser.error("--logit_kd_weight cannot be negative")
+    if cfg.ls_kd_weight < 0:
+        parser.error("--ls_kd_weight cannot be negative")
+    if cfg.ls_eps <= 0:
+        parser.error("--ls_eps must be positive")
     if cfg.icd_logit_warmup_epochs < 0:
         parser.error("--icd_logit_warmup_epochs cannot be negative")
     if (
@@ -493,7 +514,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
         cfg.mix_prob        = args.mix_prob
         cfg.mix_switch_prob = args.mix_switch_prob
 
-    if cfg.kd_method in {"hard_topk", "conservative", "conservative_multiteacher", "topkd", "adaptive_center_relation", "icd_compactness"} and (cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0):
+    if cfg.kd_method in {"hard_topk", "conservative", "conservative_multiteacher", "topkd", "adaptive_center_relation", "icd_compactness", "logit_standardization"} and (cfg.mixup_alpha > 0 or cfg.cutmix_alpha > 0):
         print(
             f"WARNING: {cfg.kd_method} KD requires unmixed identity targets; "
             "forcing MixUp/CutMix off. Pass --no_mix to silence this warning."
@@ -657,7 +678,7 @@ def load_teacher(cfg: KDConfig, device: torch.device, logger: logging.Logger) ->
         loss_mode = teacher_cfg.get("loss_mode", "ce")
         if loss_mode not in {"arcface", "subcenter_arcface"}:
             raise ValueError(
-                "ICD NAS teacher must use an ArcFace-compatible checkpoint; "
+                "NAS teacher must use an ArcFace-compatible checkpoint; "
                 f"config loss_mode={loss_mode!r}"
             )
         replace_linear_with_arcface(
@@ -1234,6 +1255,8 @@ def train_one_epoch(
         "icd_bank_occupancy", "icd_true_class_margin", "loss_fcd",
         "loss_arcface_raw", "loss_arcface_weighted",
         "loss_logit_kd_weighted", "logit_kd_effective_weight",
+        "loss_ce_weighted", "loss_ls_kd", "loss_ls_kd_weighted",
+        "student_logit_std", "teacher_logit_std",
     )
     progressive_totals = {key: 0.0 for key in diagnostic_keys}
     correct = n_samples = 0
@@ -1251,7 +1274,7 @@ def train_one_epoch(
         with torch.no_grad():
             logits_anchor = None
             logits_teacher2 = None
-            if cfg.kd_method in {"hinton", "dkd", "hard_topk", "conservative", "conservative_multiteacher", "topkd"}:
+            if cfg.kd_method in {"hinton", "logit_standardization", "dkd", "hard_topk", "conservative", "conservative_multiteacher", "topkd"}:
                 logits_teacher = teacher(mixed_images)
                 if cfg.kd_method in {"conservative", "conservative_multiteacher"}:
                     if anchor is None:
@@ -1297,7 +1320,7 @@ def train_one_epoch(
 
         # AMP forward
         with autocast("cuda", enabled=cfg.amp):
-            if cfg.kd_method == "hinton":
+            if cfg.kd_method in {"hinton", "logit_standardization"}:
                 logits_student = student(mixed_images)
                 # Student dengan auxiliary=False selalu return tensor tunggal
                 if is_mixed:
@@ -1766,12 +1789,20 @@ def main():
         teacher = None
         logger.info("  Teacher: skipped (epochs=0, evaluation only)")
     student = load_student(cfg, device, logger)
+    if (
+        cfg.kd_method == "logit_standardization"
+        and getattr(cfg, "student_loss_mode", None) != "ce"
+    ):
+        raise ValueError(
+            "logit_standardization is locked to an ordinary Linear+CE student; "
+            f"student loss_mode={getattr(cfg, 'student_loss_mode', None)!r}"
+        )
     if cfg.kd_method == "icd_compactness" and getattr(cfg, "student_loss_mode", None) != "arcface":
         raise ValueError(
             "icd_compactness is locked to the C10 ArcFace student; "
             f"student loss_mode={getattr(cfg, 'student_loss_mode', None)!r}"
         )
-    if cfg.kd_method in {"adaptive_center_relation", "icd_compactness"}:
+    if cfg.kd_method in {"adaptive_center_relation", "icd_compactness", "logit_standardization"}:
         student_classes = getattr(
             student.classifier, "out_features",
             getattr(student.classifier, "classnum", None),
@@ -1807,6 +1838,11 @@ def main():
             "  Label-map compatibility: class dimensions match configured split. "
             "Teacher checkpoint has no embedded label-map hash; ordering is bound by the supplied split provenance."
         )
+        if cfg.kd_method == "logit_standardization":
+            logger.info(
+                "  LS-KD compatibility: ordinary Linear+CE student and frozen NAS "
+                f"teacher both produce {_ds_info['num_classes']} logits."
+            )
         if cfg.kd_method == "icd_compactness" and cfg.logit_kd_weight > 0:
             logger.info(
                 "  Logit-KD compatibility: teacher/student ArcFace scales are both 64 "
@@ -1869,6 +1905,19 @@ def main():
         logger.info(
             f"  Loss: HintonKD  T={cfg.temperature}  "
             f"alpha={cfg.alpha} (CE={cfg.alpha*100:.0f}%, KD={(1-cfg.alpha)*100:.0f}%)"
+        )
+    elif cfg.kd_method == "logit_standardization":
+        criterion = LogitStandardizationKDLoss(
+            temperature=cfg.temperature,
+            ce_weight=cfg.ce_weight,
+            kd_weight=cfg.ls_kd_weight,
+            label_smoothing=cfg.label_smoothing,
+            eps=cfg.ls_eps,
+        )
+        logger.info(
+            "  Loss: LogitStandardizationKD "
+            f"base_T={cfg.temperature} CE={cfg.ce_weight} "
+            f"KD={cfg.ls_kd_weight} eps={cfg.ls_eps}"
         )
     elif cfg.kd_method == "dkd":
         criterion = DecoupledKDLoss(
@@ -2070,12 +2119,16 @@ def main():
         "method_label": getattr(criterion, "method_label", cfg.kd_method),
         "temperature": cfg.temperature,
         "logit_kd_weight": cfg.logit_kd_weight,
+        "ls_kd_weight": cfg.ls_kd_weight,
+        "ls_eps": cfg.ls_eps,
+        "ce_weight": cfg.ce_weight,
+        "label_smoothing": cfg.label_smoothing,
         "icd_logit_warmup_epochs": cfg.icd_logit_warmup_epochs,
         "teacher_arcface_scale": getattr(cfg, "teacher_arcface_scale", None),
         "student_arcface_scale": getattr(cfg, "student_arcface_scale", None),
         "label_map_compatibility": (
             "class_dimension_plus_supplied_split; teacher checkpoint lacks embedded label-map hash"
-            if cfg.kd_method in {"adaptive_center_relation", "icd_compactness"}
+            if cfg.kd_method in {"adaptive_center_relation", "icd_compactness", "logit_standardization"}
             else "not_audited_by_this_method"
         ),
         "continuation_type": cfg.continuation_type,
@@ -2168,6 +2221,8 @@ def main():
         "icd_true_class_margin", "loss_fcd", "loss_arcface_raw",
         "loss_arcface_weighted", "loss_logit_kd_weighted",
         "logit_kd_effective_weight",
+        "loss_ce_weighted", "loss_ls_kd", "loss_ls_kd_weighted",
+        "student_logit_std", "teacher_logit_std",
         "train_acc", "val_loss", "val_acc", "lr", "time_s", "val_true_class_margin",
     ]
     with open(csv_path, csv_mode, newline="") as f:
@@ -2301,6 +2356,10 @@ def main():
             f"logit(raw/w/weight)={train_logit_kd:.4f}/"
             f"{progressive_metrics['loss_logit_kd_weighted']:.4f}/"
             f"{progressive_metrics['logit_kd_effective_weight']:.4f} "
+            f"ls-kd(raw/w)={progressive_metrics['loss_ls_kd']:.4f}/"
+            f"{progressive_metrics['loss_ls_kd_weighted']:.4f} "
+            f"logit-std(s/t)={progressive_metrics['student_logit_std']:.3f}/"
+            f"{progressive_metrics['teacher_logit_std']:.3f} "
             f"train_acc={train_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} "
             f"{'** BEST_LOSS' if is_best_loss else ''}"
@@ -2449,6 +2508,8 @@ def main():
             "initial_student_weights": cfg.initial_student_weights,
             "embedding_weight": cfg.embedding_weight,
             "logit_kd_weight": cfg.logit_kd_weight,
+            "ls_kd_weight": cfg.ls_kd_weight,
+            "ls_eps": cfg.ls_eps,
             "topk_k"     : cfg.topk_k,
             "topk_weight": cfg.topk_weight,
             "margin_weight": cfg.margin_weight,

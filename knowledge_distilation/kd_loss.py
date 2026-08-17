@@ -160,6 +160,112 @@ class SoftCEKDLoss(nn.Module):
         return loss_total, breakdown
 
 
+class LogitStandardizationKDLoss(nn.Module):
+    """Ordinary CE plus z-score logit-standardized knowledge distillation.
+
+    This follows the plug-in transformation proposed by Sun et al. (CVPR
+    2024): each sample's class logits are standardized independently before
+    temperature softmax and teacher-to-student KL divergence.  Standardizing
+    both sides removes the otherwise unnecessary requirement that a small
+    student reproduce the teacher's absolute logit scale.
+
+    The implementation intentionally keeps the deployable student head as a
+    conventional ``Linear`` classifier.  The frozen teacher may use a scaled
+    cosine/ArcFace inference head because z-score normalization removes that
+    global scale before the KL term is evaluated.
+    """
+
+    method_label = "Logit Standardization KD (Sun et al., CVPR 2024)"
+
+    def __init__(
+        self,
+        temperature: float = 2.0,
+        ce_weight: float = 1.0,
+        kd_weight: float = 9.0,
+        label_smoothing: float = 0.0,
+        eps: float = 1e-7,
+    ):
+        super().__init__()
+        if temperature <= 0:
+            raise ValueError("temperature must be positive")
+        if ce_weight < 0 or kd_weight < 0:
+            raise ValueError("CE and KD weights cannot be negative")
+        if eps <= 0:
+            raise ValueError("eps must be positive")
+        self.temperature = float(temperature)
+        self.ce_weight = float(ce_weight)
+        self.kd_weight = float(kd_weight)
+        self.eps = float(eps)
+        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+
+    def standardize(self, logits: torch.Tensor) -> torch.Tensor:
+        if logits.ndim != 2:
+            raise ValueError(f"Expected [B,C] logits, got {tuple(logits.shape)}")
+        if logits.shape[1] < 2:
+            raise ValueError("Logit standardization requires at least two classes")
+        # Match the authors' public implementation: per-sample mean and
+        # torch.std's sample-standard-deviation convention.  FP32 keeps the
+        # operation stable when the surrounding forward pass uses AMP.
+        logits_fp32 = logits.float()
+        mean = logits_fp32.mean(dim=-1, keepdim=True)
+        std = logits_fp32.std(dim=-1, keepdim=True)
+        return (logits_fp32 - mean) / (std + self.eps)
+
+    def forward(
+        self,
+        logits_student: torch.Tensor,
+        logits_teacher: torch.Tensor,
+        targets: torch.Tensor,
+        mix_targets: tuple | None = None,
+    ) -> tuple[torch.Tensor, dict]:
+        if logits_student.shape != logits_teacher.shape:
+            raise ValueError(
+                "Student/teacher logits differ: "
+                f"{tuple(logits_student.shape)} vs {tuple(logits_teacher.shape)}"
+            )
+        if targets.shape != (logits_student.shape[0],):
+            raise ValueError("targets must have shape [B]")
+
+        student_fp32 = logits_student.float()
+        if mix_targets is not None:
+            targets_a, targets_b, lam = mix_targets
+            loss_ce = (
+                lam * self.ce(student_fp32, targets_a)
+                + (1.0 - lam) * self.ce(student_fp32, targets_b)
+            )
+        else:
+            loss_ce = self.ce(student_fp32, targets)
+
+        standardized_student = self.standardize(logits_student)
+        standardized_teacher = self.standardize(logits_teacher.detach())
+        temperature = self.temperature
+        student_log_prob = F.log_softmax(
+            standardized_student / temperature, dim=1
+        )
+        teacher_prob = F.softmax(
+            standardized_teacher / temperature, dim=1
+        ).detach()
+        loss_kl = F.kl_div(
+            student_log_prob, teacher_prob, reduction="batchmean"
+        )
+        loss_kd = loss_kl * (temperature ** 2)
+        weighted_ce = self.ce_weight * loss_ce
+        weighted_kd = self.kd_weight * loss_kd
+        loss_total = weighted_ce + weighted_kd
+
+        return loss_total, {
+            "loss_ce": loss_ce.item(),
+            "loss_ce_weighted": weighted_ce.item(),
+            "loss_kl": loss_kl.item(),
+            "loss_kd": loss_kd.item(),
+            "loss_ls_kd": loss_kd.item(),
+            "loss_ls_kd_weighted": weighted_kd.item(),
+            "loss_total": loss_total.item(),
+            "student_logit_std": student_fp32.std(dim=1).mean().item(),
+            "teacher_logit_std": logits_teacher.float().std(dim=1).mean().item(),
+        }
+
+
 class DecoupledKDLoss(nn.Module):
     """Official DKD decomposition into target-class and non-target-class KD."""
 
@@ -941,6 +1047,14 @@ def get_kd_loss(method: str = "hinton", **kwargs) -> nn.Module:
             temperature     = kwargs.get("temperature", 4.0),
             alpha           = kwargs.get("alpha", 0.3),
             label_smoothing = kwargs.get("label_smoothing", 0.1),
+        )
+    if method == "logit_standardization":
+        return LogitStandardizationKDLoss(
+            temperature=kwargs.get("temperature", 2.0),
+            ce_weight=kwargs.get("ce_weight", 1.0),
+            kd_weight=kwargs.get("ls_kd_weight", 9.0),
+            label_smoothing=kwargs.get("label_smoothing", 0.0),
+            eps=kwargs.get("ls_eps", 1e-7),
         )
     if method == "dkd":
         return DecoupledKDLoss(
