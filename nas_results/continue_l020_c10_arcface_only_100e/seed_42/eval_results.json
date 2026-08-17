@@ -1,0 +1,23 @@
+{
+  "accuracy": 0.9976019184652278,
+  "precision": 0.9964028776978417,
+  "recall": 0.9976019184652278,
+  "f1_score": 0.996802557953637,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.08607966559273857,
+  "num_test_samples": 834,
+  "evaluated_split": "test",
+  "total_params": 585250,
+  "inference_total_params": 585250,
+  "training_total_params": 585250,
+  "loss_mode": "arcface",
+  "input_profile": "legacy",
+  "stem_pool": "max",
+  "evaluated_checkpoint": "nas_results\\continue_l020_c10_arcface_only_100e\\seed_42\\best_screening.pth",
+  "model_size_mb": 2.2631072998046875,
+  "flops": 60430880.0,
+  "flops_M": 60.43088,
+  "latency_gpu_ms": 9.806289672851562,
+  "latency_cpu_ms": 22.041354179382324
+}

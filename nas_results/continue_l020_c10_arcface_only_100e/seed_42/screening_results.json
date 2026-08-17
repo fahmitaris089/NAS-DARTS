@@ -1,0 +1,24 @@
+{
+  "status": "screening_complete_test_not_evaluated",
+  "partition": "validation_only",
+  "test_loader_created": false,
+  "test_partition_inspected": false,
+  "best_epoch": 1,
+  "best_validation_loss": 0.0004606934848632885,
+  "best_validation_accuracy": 1.0,
+  "best_validation_accuracy_epoch": 1,
+  "best_checkpoint_true_class_margin": 32.957920760559524,
+  "maximum_validation_true_class_margin": 33.72077360999384,
+  "checkpoint_selection": "lexicographic_validation_errors_loss_margin",
+  "best_checkpoint": "nas_results\\continue_l020_c10_arcface_only_100e\\seed_42\\best_screening.pth",
+  "best_screening_epoch": 1,
+  "best_screening_key": {
+    "validation_errors": 0,
+    "validation_ce_loss": 0.0004606934848632885,
+    "negative_true_class_margin": -32.957920760559524
+  },
+  "loss_mode": "arcface",
+  "input_profile": "legacy",
+  "stem_pool": "max",
+  "consistency_mode": "none"
+}

@@ -1,0 +1,23 @@
+{
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "auc": 1.0,
+  "eer": 0.0,
+  "inference_time_per_batch_sec": 0.10124049867902483,
+  "num_test_samples": 834,
+  "evaluated_split": "test",
+  "total_params": 5054756,
+  "inference_total_params": 5054756,
+  "training_total_params": 5054756,
+  "loss_mode": "arcface",
+  "input_profile": "legacy",
+  "stem_pool": "max",
+  "evaluated_checkpoint": "nas_results\\teacher_l020_c28_cells12_stem8_arcface_300e\\seed_42\\best_screening.pth",
+  "model_size_mb": 19.40058135986328,
+  "flops": 573167168.0,
+  "flops_M": 573.167168,
+  "latency_gpu_ms": 18.35890293121338,
+  "latency_cpu_ms": 70.37466526031494
+}

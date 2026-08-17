@@ -1,0 +1,158 @@
+{
+  "genotype": {
+    "normal": [
+      [
+        "skip_connect",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        0
+      ],
+      [
+        "skip_connect",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        2
+      ],
+      [
+        "rep_conv_3x3",
+        3
+      ],
+      [
+        "rep_conv_3x3",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        0
+      ],
+      [
+        "rep_conv_3x3",
+        1
+      ]
+    ],
+    "normal_concat": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "reduce": [
+      [
+        "skip_connect",
+        0
+      ],
+      [
+        "rep_conv_3x3",
+        1
+      ],
+      [
+        "rep_conv_3x3",
+        2
+      ],
+      [
+        "rep_conv_5x5",
+        0
+      ],
+      [
+        "skip_connect",
+        3
+      ],
+      [
+        "rep_conv_3x3",
+        0
+      ],
+      [
+        "rep_conv_3x3",
+        3
+      ],
+      [
+        "rep_conv_3x3",
+        1
+      ]
+    ],
+    "reduce_concat": [
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "data_dir": "preprocessed_results",
+  "split_path": "PalmVein_Lightweight_Benchmark\\dataset\\splits\\split_info.json",
+  "output_dir": "nas_results\\teacher_l020_c28_cells12_stem8_arcface_300e\\seed_42",
+  "C_init": 28,
+  "num_cells": 12,
+  "stem_downsample": 8,
+  "stem_pool": "max",
+  "reduction_indices": "4,8",
+  "epochs": 300,
+  "batch_size": 64,
+  "lr": 0.001,
+  "lr_min": 1e-06,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "drop_path_prob": 0.0,
+  "cutout_length": 0,
+  "augmentation_policy": "v4_robust_light",
+  "input_profile": "legacy",
+  "consistency_mode": "none",
+  "consistency_temperature": 4.0,
+  "consistency_weight": 1.0,
+  "consistency_ramp_epochs": 20,
+  "auxiliary": false,
+  "no_auxiliary": true,
+  "seed": 42,
+  "num_workers": 0,
+  "loss_mode": "arcface",
+  "label_smoothing": 0.0,
+  "adaface_m": 0.4,
+  "adaface_h": 0.333,
+  "adaface_s": 64.0,
+  "adaface_t_alpha": 0.01,
+  "arcface_margin": 0.5,
+  "arcface_scale": 64.0,
+  "arcface_margin_warmup_epochs": 20,
+  "subcenter_init_epsilon": 0.001,
+  "arcface_subcenters": 1,
+  "skip_test_evaluation": true,
+  "train_sampler": "pk",
+  "pk_p": 16,
+  "pk_k": 4,
+  "initial_weights": "",
+  "checkpoint_epochs": "100",
+  "resume_training_state": "",
+  "total_params": 5054756,
+  "device": "cuda",
+  "timestamp": "2026-08-17T10:13:45.568068",
+  "retrain_cfg": {
+    "C_init": "14",
+    "num_cells": "8",
+    "auxiliary": "True",
+    "auxiliary_weight": "0.4",
+    "optimizer": "AdamW",
+    "lr": "0.001",
+    "weight_decay": "0.05",
+    "warmup_epochs": "10",
+    "warmup_factor": "0.01",
+    "epochs": "600",
+    "lr_min": "1e-06",
+    "label_smoothing": "0.2",
+    "drop_path_prob": "0.2",
+    "dropout": "0.3",
+    "grad_clip": "1.0",
+    "cutout_length": "16",
+    "batch_size": "64",
+    "num_workers": "4",
+    "use_augmentation": "True",
+    "target_params_min": "250000",
+    "target_params_max": "400000"
+  },
+  "effective_label_smoothing": 0.0,
+  "input_profile_metadata": {
+    "version": "legacy"
+  }
+}

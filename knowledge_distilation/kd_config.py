@@ -87,6 +87,7 @@ class KDConfig:
     icd_sdc_start_epoch: int = 76
     icd_sdc_weight: float = 0.5
     icd_classification_weight: float = 0.1
+    icd_logit_warmup_epochs: int = 20
     dkd_alpha: float = 1.0
     dkd_beta: float = 8.0
     dkd_warmup_epochs: int = 20
@@ -260,6 +261,10 @@ def print_config(cfg: KDConfig) -> None:
         print(
             f"                    SDC start={cfg.icd_sdc_start_epoch} "
             f"SDC weight={cfg.icd_sdc_weight} ArcFace weight={cfg.icd_classification_weight}"
+        )
+        print(
+            f"                    Logit KD weight={cfg.logit_kd_weight} "
+            f"T={cfg.temperature} warmup={cfg.icd_logit_warmup_epochs}"
         )
     print()
     print(f"  Epochs          : {cfg.epochs}")

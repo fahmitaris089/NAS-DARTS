@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-08-17T14:54:17.154560",
+  "model_dir": "knowledge_distilation\\kd_results\\fcd_l020_c10_c28ta_seed42",
+  "tta_views": 1,
+  "tta_view_names": [
+    "original"
+  ],
+  "no_tta": true,
+  "results": {
+    "test": {
+      "acc": 0.9988,
+      "loss": 0.0043,
+      "auc": 1.0,
+      "eer_pct": 0.0,
+      "per_view_acc": {
+        "original": 0.9988
+      },
+      "n_samples": 834,
+      "time_s": 1.2
+    }
+  }
+}

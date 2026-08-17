@@ -390,9 +390,20 @@ def main():
     parser.add_argument("--pk_k", type=int, default=4)
     parser.add_argument("--initial_weights", type=str, default="",
                         help="Common random state shared by controlled scratch ablations")
+    parser.add_argument(
+        "--continuation_weights", type=str, default="",
+        help=(
+            "Mature inference checkpoint used for weights-only continuation. "
+            "Unlike --initial_weights, this is loaded after constructing the "
+            "configured ArcFace/AdaFace head."
+        ),
+    )
     parser.add_argument("--checkpoint_epochs", type=str, default="100")
     parser.add_argument("--resume_training_state", type=str, default="")
     args = parser.parse_args()
+
+    if args.initial_weights and args.continuation_weights:
+        parser.error("--initial_weights and --continuation_weights are mutually exclusive")
 
     margin_modes = {"adaface", "arcface", "subcenter_arcface"}
     use_auxiliary = args.auxiliary and not args.no_auxiliary and args.loss_mode not in margin_modes
@@ -509,6 +520,18 @@ def main():
             f"margin_warmup={args.arcface_margin_warmup_epochs}e init=CE-head"
         )
 
+    if args.continuation_weights:
+        continuation_payload = torch.load(
+            args.continuation_weights, map_location="cpu", weights_only=False
+        )
+        if isinstance(continuation_payload, dict) and "student" in continuation_payload:
+            continuation_payload = continuation_payload["student"]
+        model.load_state_dict(continuation_payload, strict=True)
+        logger.info(
+            "  Loaded mature continuation checkpoint after head construction: "
+            f"{args.continuation_weights}"
+        )
+
     total_params = count_parameters(model)
     if not args.resume_training_state:
         torch.save(model.state_dict(), save_dir / "initial_student.pth")
@@ -621,6 +644,14 @@ def main():
         "genotype_sha256": file_hash(genotype_path),
         "split_sha256": file_hash(args.split_path) if args.split_path else None,
         "initial_weights_sha256": file_hash(args.initial_weights) if args.initial_weights else None,
+        "continuation_weights_sha256": (
+            file_hash(args.continuation_weights) if args.continuation_weights else None
+        ),
+        "initialization_type": (
+            "mature_checkpoint_continuation" if args.continuation_weights
+            else "controlled_initial_state" if args.initial_weights
+            else "random"
+        ),
         "seed": args.seed,
         "sampler": args.train_sampler,
         "pk_p": args.pk_p if args.train_sampler == "pk" else None,

@@ -162,6 +162,9 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     parser.add_argument("--icd_sdc_weight", type=float, default=cfg.icd_sdc_weight)
     parser.add_argument("--icd_classification_weight", type=float,
                         default=cfg.icd_classification_weight)
+    parser.add_argument("--icd_logit_warmup_epochs", type=int,
+                        default=cfg.icd_logit_warmup_epochs,
+                        help="Linear warm-up for additive logit KD inside ICD/FCD")
     parser.add_argument("--dkd_alpha", type=float, default=cfg.dkd_alpha,
                         help="Target-class DKD weight")
     parser.add_argument("--dkd_beta", type=float, default=cfg.dkd_beta,
@@ -214,7 +217,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     parser.add_argument("--embedding_weight", type=float, default=cfg.embedding_weight,
                         help="Projected embedding loss weight")
     parser.add_argument("--logit_kd_weight", type=float, default=cfg.logit_kd_weight,
-                        help="Optional Hinton logit KD weight inside hybrid KD")
+                        help="Optional Hinton logit KD weight inside hybrid or ICD/FCD KD")
     parser.add_argument("--topk_k", type=int, default=cfg.topk_k,
                         help="Teacher top-k classes for hard_topk KD")
     parser.add_argument("--topk_weight", type=float, default=cfg.topk_weight,
@@ -351,6 +354,7 @@ def parse_args(cfg: KDConfig) -> KDConfig:
     cfg.icd_sdc_start_epoch = args.icd_sdc_start_epoch
     cfg.icd_sdc_weight      = args.icd_sdc_weight
     cfg.icd_classification_weight = args.icd_classification_weight
+    cfg.icd_logit_warmup_epochs = args.icd_logit_warmup_epochs
     if cfg.kd_method == "icd_compactness":
         if cfg.teacher_arch != "nas_eval" or not cfg.teacher_config:
             parser.error("icd_compactness requires --teacher_arch nas_eval and --teacher_config")
@@ -403,6 +407,18 @@ def parse_args(cfg: KDConfig) -> KDConfig:
         parser.error("weights_only continuation requires --continuation_source_epoch > 0")
     cfg.embedding_weight    = args.embedding_weight
     cfg.logit_kd_weight     = args.logit_kd_weight
+    if cfg.temperature <= 0:
+        parser.error("--temperature must be positive")
+    if cfg.logit_kd_weight < 0:
+        parser.error("--logit_kd_weight cannot be negative")
+    if cfg.icd_logit_warmup_epochs < 0:
+        parser.error("--icd_logit_warmup_epochs cannot be negative")
+    if (
+        cfg.kd_method == "icd_compactness"
+        and cfg.logit_kd_weight > 0
+        and cfg.icd_logit_warmup_epochs > args.epochs
+    ):
+        parser.error("ICD logit KD warm-up cannot exceed the training budget")
     cfg.topk_k              = args.topk_k
     cfg.topk_weight         = args.topk_weight
     cfg.margin_weight       = args.margin_weight
@@ -1215,7 +1231,9 @@ def train_one_epoch(
         "center_weight_effective", "feature_weight_effective", "relation_weight_effective",
         "grad_norm_ce", "grad_norm_center", "grad_norm_feature", "grad_norm_relation",
         "adaptive_stage", "icd_sdc_active", "icd_positive_pairs",
-        "icd_bank_occupancy", "icd_true_class_margin",
+        "icd_bank_occupancy", "icd_true_class_margin", "loss_fcd",
+        "loss_arcface_raw", "loss_arcface_weighted",
+        "loss_logit_kd_weighted", "logit_kd_effective_weight",
     )
     progressive_totals = {key: 0.0 for key in diagnostic_keys}
     correct = n_samples = 0
@@ -1247,10 +1265,9 @@ def train_one_epoch(
             elif cfg.kd_method == "icd_compactness":
                 if is_mixed:
                     raise RuntimeError("ICD compactness distillation requires unmixed labels")
-                _, teacher_embeddings = teacher_forward_with_embeddings(
+                logits_teacher, teacher_embeddings = teacher_forward_with_embeddings(
                     teacher, cfg.teacher_arch, mixed_images
                 )
-                logits_teacher = None
             elif cfg.kd_method == "adaptive_center_relation":
                 if is_mixed:
                     raise RuntimeError("Adaptive center-relation distillation requires unmixed labels")
@@ -1338,6 +1355,7 @@ def train_one_epoch(
                 )
                 loss, breakdown = criterion(
                     inference_logits=logits_student,
+                    teacher_logits=logits_teacher,
                     classification_logits=classification_logits,
                     student_embeddings=student_embeddings,
                     teacher_embeddings=teacher_embeddings,
@@ -1413,6 +1431,8 @@ def train_one_epoch(
                 f"center={breakdown.get('loss_center', 0.0):.4f} "
                 f"rel={breakdown.get('loss_relation', 0.0):.4f} "
                 f"emb={breakdown.get('loss_embedding', 0.0):.4f} "
+                f"logit_kd={breakdown.get('loss_logit_kd', 0.0):.4f} "
+                f"weighted_logit_kd={breakdown.get('loss_logit_kd_weighted', 0.0):.4f} "
                 f"topk={breakdown.get('loss_topk', 0.0):.4f} "
                 f"tdl={breakdown.get('loss_tdl', 0.0):.4f} "
                 f"contrast={breakdown.get('loss_contrast', 0.0):.4f} "
@@ -1729,6 +1749,7 @@ def main():
         f"Test batches: {len(test_loader) if test_loader is not None else 'not-created'}"
     )
     cfg.test_loader_created = bool(_ds_info.get("test_loader_created", test_loader is not None))
+    cfg.label_map_sha256 = stable_json_hash(_ds_info["label_map"])
     if cfg.skip_test_evaluation and cfg.test_loader_created:
         raise RuntimeError("Screening protocol requested no test evaluation, but a test loader was created")
     if cfg.train_sampler == "pk":
@@ -1763,10 +1784,34 @@ def main():
             raise ValueError("Student classifier and dataset label-map class count differ")
         if teacher is not None and int(teacher_classes) != int(_ds_info["num_classes"]):
             raise ValueError("Teacher classifier and dataset label-map class count differ")
+        student_scale = getattr(student.classifier, "s", None)
+        teacher_scale = getattr(
+            getattr(teacher, "classifier", None), "s", None
+        ) if teacher is not None else None
+        cfg.student_arcface_scale = (
+            None if student_scale is None else float(student_scale)
+        )
+        cfg.teacher_arcface_scale = (
+            None if teacher_scale is None else float(teacher_scale)
+        )
+        if cfg.kd_method == "icd_compactness" and cfg.logit_kd_weight > 0:
+            if student_scale is None or teacher_scale is None:
+                raise ValueError(
+                    "ICD logit KD requires ArcFace inference heads on teacher and student"
+                )
+            if abs(float(student_scale) - 64.0) > 1e-9:
+                raise ValueError("Student ArcFace scale must be 64 for the locked protocol")
+            if abs(float(teacher_scale) - 64.0) > 1e-9:
+                raise ValueError("Teacher ArcFace scale must be 64 for the locked protocol")
         logger.info(
             "  Label-map compatibility: class dimensions match configured split. "
             "Teacher checkpoint has no embedded label-map hash; ordering is bound by the supplied split provenance."
         )
+        if cfg.kd_method == "icd_compactness" and cfg.logit_kd_weight > 0:
+            logger.info(
+                "  Logit-KD compatibility: teacher/student ArcFace scales are both 64 "
+                f"and classifier outputs contain {_ds_info['num_classes']} classes."
+            )
     anchor_student = None
     teacher2 = None
     if cfg.kd_method in {"conservative", "conservative_multiteacher"}:
@@ -1929,6 +1974,9 @@ def main():
             sdc_start_epoch=cfg.icd_sdc_start_epoch,
             sdc_weight=cfg.icd_sdc_weight,
             classification_weight=cfg.icd_classification_weight,
+            temperature=cfg.temperature,
+            logit_kd_weight=cfg.logit_kd_weight,
+            logit_warmup_epochs=cfg.icd_logit_warmup_epochs,
         ).to(device)
         logger.info(
             f"  Loss: {criterion.method_label}; mode={cfg.icd_mode}; "
@@ -1936,7 +1984,9 @@ def main():
             f"delta={cfg.icd_delta}; gamma={cfg.icd_gamma}; "
             f"SDC start={cfg.icd_sdc_start_epoch}; "
             f"weights FCD=1 SDC={cfg.icd_sdc_weight} "
-            f"ArcFace={cfg.icd_classification_weight}"
+            f"ArcFace={cfg.icd_classification_weight} "
+            f"logit={cfg.logit_kd_weight} T={cfg.temperature} "
+            f"logit_warmup={cfg.icd_logit_warmup_epochs}"
         )
     elif cfg.kd_method == "adaptive_center_relation":
         centers, center_metadata = prepare_teacher_center_bank(
@@ -2011,12 +2061,18 @@ def main():
         ),
         "student_config_sha256": sha256_file(cfg.student_config_path),
         "split_sha256": sha256_file(cfg.split_path),
+        "label_map_sha256": cfg.label_map_sha256,
         "initial_student_sha256": (
             sha256_file(cfg.initial_student_weights) if cfg.initial_student_weights else
             sha256_file(cfg.student_weights) if not cfg.no_pretrained_student else None
         ),
         "method": cfg.kd_method,
         "method_label": getattr(criterion, "method_label", cfg.kd_method),
+        "temperature": cfg.temperature,
+        "logit_kd_weight": cfg.logit_kd_weight,
+        "icd_logit_warmup_epochs": cfg.icd_logit_warmup_epochs,
+        "teacher_arcface_scale": getattr(cfg, "teacher_arcface_scale", None),
+        "student_arcface_scale": getattr(cfg, "student_arcface_scale", None),
         "label_map_compatibility": (
             "class_dimension_plus_supplied_split; teacher checkpoint lacks embedded label-map hash"
             if cfg.kd_method in {"adaptive_center_relation", "icd_compactness"}
@@ -2109,7 +2165,9 @@ def main():
         "relation_weight_effective", "grad_norm_ce", "grad_norm_center",
         "grad_norm_feature", "grad_norm_relation", "adaptive_stage",
         "icd_sdc_active", "icd_positive_pairs", "icd_bank_occupancy",
-        "icd_true_class_margin",
+        "icd_true_class_margin", "loss_fcd", "loss_arcface_raw",
+        "loss_arcface_weighted", "loss_logit_kd_weighted",
+        "logit_kd_effective_weight",
         "train_acc", "val_loss", "val_acc", "lr", "time_s", "val_true_class_margin",
     ]
     with open(csv_path, csv_mode, newline="") as f:
@@ -2237,6 +2295,12 @@ def main():
             f"icd(active/pairs/bank)={progressive_metrics['icd_sdc_active']:.2f}/"
             f"{progressive_metrics['icd_positive_pairs']:.1f}/"
             f"{progressive_metrics['icd_bank_occupancy']:.3f} "
+            f"fcd={progressive_metrics['loss_fcd']:.4f} "
+            f"arc(raw/w)={progressive_metrics['loss_arcface_raw']:.4f}/"
+            f"{progressive_metrics['loss_arcface_weighted']:.4f} "
+            f"logit(raw/w/weight)={train_logit_kd:.4f}/"
+            f"{progressive_metrics['loss_logit_kd_weighted']:.4f}/"
+            f"{progressive_metrics['logit_kd_effective_weight']:.4f} "
             f"train_acc={train_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} "
             f"{'** BEST_LOSS' if is_best_loss else ''}"
@@ -2380,6 +2444,7 @@ def main():
             "icd_sdc_start_epoch": cfg.icd_sdc_start_epoch,
             "icd_sdc_weight": cfg.icd_sdc_weight,
             "icd_classification_weight": cfg.icd_classification_weight,
+            "icd_logit_warmup_epochs": cfg.icd_logit_warmup_epochs,
             "teacher_center_cache": cfg.teacher_center_cache,
             "initial_student_weights": cfg.initial_student_weights,
             "embedding_weight": cfg.embedding_weight,

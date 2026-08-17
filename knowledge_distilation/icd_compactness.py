@@ -121,6 +121,9 @@ class ICDCompactnessLoss(nn.Module):
         sdc_start_epoch: int = 76,
         sdc_weight: float = 0.5,
         classification_weight: float = 0.1,
+        temperature: float = 20.0,
+        logit_kd_weight: float = 0.0,
+        logit_warmup_epochs: int = 20,
     ) -> None:
         super().__init__()
         if mode not in {"fcd", "full"}:
@@ -129,12 +132,19 @@ class ICDCompactnessLoss(nn.Module):
             raise ValueError("delta must be in (0, 2]")
         if gamma <= 0 or sdc_start_epoch <= 0:
             raise ValueError("gamma and sdc_start_epoch must be positive")
+        if temperature <= 0:
+            raise ValueError("temperature must be positive")
+        if logit_kd_weight < 0 or logit_warmup_epochs < 0:
+            raise ValueError("logit KD weight and warm-up cannot be negative")
         self.mode = mode
         self.delta = float(delta)
         self.gamma = float(gamma)
         self.sdc_start_epoch = int(sdc_start_epoch)
         self.sdc_weight = float(sdc_weight)
         self.classification_weight = float(classification_weight)
+        self.temperature = float(temperature)
+        self.logit_kd_weight = float(logit_kd_weight)
+        self.logit_warmup_epochs = int(logit_warmup_epochs)
         self.projector = nn.Linear(student_dim, teacher_dim, bias=False)
         nn.init.orthogonal_(self.projector.weight)
         self.bank = SynchronizedClassFeatureBank(
@@ -162,6 +172,7 @@ class ICDCompactnessLoss(nn.Module):
         self,
         *,
         inference_logits: torch.Tensor,
+        teacher_logits: torch.Tensor,
         classification_logits: torch.Tensor,
         student_embeddings: torch.Tensor,
         teacher_embeddings: torch.Tensor,
@@ -172,6 +183,28 @@ class ICDCompactnessLoss(nn.Module):
         normalized_teacher = F.normalize(teacher_embeddings.detach().float(), dim=1)
         fcd = 0.5 * (projected_student - normalized_teacher).square().sum(dim=1).mean()
         classification = F.cross_entropy(classification_logits.float(), targets)
+
+        # ArcFace inference logits are scaled cosine similarities. Temperature
+        # softening is therefore applied to the inference logits, never to the
+        # label-dependent margin logits used by the classification objective.
+        if teacher_logits.shape != inference_logits.shape:
+            raise ValueError(
+                "teacher and student logits must have identical [batch, classes] shape"
+            )
+        student_log_prob = F.log_softmax(
+            inference_logits.float() / self.temperature, dim=1
+        )
+        teacher_prob = F.softmax(
+            teacher_logits.detach().float() / self.temperature, dim=1
+        )
+        logit_kd = F.kl_div(
+            student_log_prob, teacher_prob, reduction="batchmean"
+        ) * (self.temperature ** 2)
+        if self.logit_warmup_epochs == 0:
+            ramp = 1.0
+        else:
+            ramp = min(max(float(epoch), 0.0) / self.logit_warmup_epochs, 1.0)
+        effective_logit_weight = self.logit_kd_weight * ramp
 
         # Updating before positive-pair construction follows Algorithm 1.
         self.bank.update(student_embeddings, teacher_embeddings, targets)
@@ -194,6 +227,7 @@ class ICDCompactnessLoss(nn.Module):
             fcd
             + self.classification_weight * classification
             + (self.sdc_weight * sdc if sdc_active else 0.0)
+            + effective_logit_weight * logit_kd
         )
         with torch.no_grad():
             true_logits = inference_logits.gather(1, targets[:, None]).squeeze(1)
@@ -203,8 +237,22 @@ class ICDCompactnessLoss(nn.Module):
         breakdown = {
             "loss_total": float(total.detach()),
             "loss_ce": float(classification.detach()),
-            "loss_kd": float((fcd + (self.sdc_weight * sdc if sdc_active else 0.0)).detach()),
+            "loss_kd": float((
+                fcd
+                + (self.sdc_weight * sdc if sdc_active else 0.0)
+                + effective_logit_weight * logit_kd
+            ).detach()),
             "loss_embedding": float(fcd.detach()),
+            "loss_fcd": float(fcd.detach()),
+            "loss_arcface_raw": float(classification.detach()),
+            "loss_arcface_weighted": float(
+                (self.classification_weight * classification).detach()
+            ),
+            "loss_logit_kd": float(logit_kd.detach()),
+            "loss_logit_kd_weighted": float(
+                (effective_logit_weight * logit_kd).detach()
+            ),
+            "logit_kd_effective_weight": float(effective_logit_weight),
             "loss_relation": float(sdc.detach()),
             "icd_sdc_active": float(sdc_active),
             "icd_positive_pairs": float(student_scores.numel()),
